@@ -1,0 +1,6 @@
+pyproject.toml
+lyric_analyzer_base.egg-info/PKG-INFO
+lyric_analyzer_base.egg-info/SOURCES.txt
+lyric_analyzer_base.egg-info/dependency_links.txt
+lyric_analyzer_base.egg-info/requires.txt
+lyric_analyzer_base.egg-info/top_level.txt

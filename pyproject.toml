@@ -1,0 +1,20 @@
+[project]
+name = "lyric-analyzer"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = ["lyric_analyzer_base"]
+
+[tool.uv.sources]
+lyric_analyzer_base = { workspace = true }
+
+[tool.uv.workspace]
+# packages/ is for backend, apps/ is for frontend
+members = ["packages/*", "apps/*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+]
+
+[tool.ruff.format]
+quote-style = "single"

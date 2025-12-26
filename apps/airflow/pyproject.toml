@@ -1,0 +1,7 @@
+[project]
+name = "lyric-analyzer-airflow"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "apache-airflow[celery,google,graphviz]==3.1.5"
+]
