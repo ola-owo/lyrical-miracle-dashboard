@@ -2824,10 +2824,14 @@ version = "0.1.0"
 source = { virtual = "apps/airflow" }
 dependencies = [
     { name = "apache-airflow", extra = ["celery", "google", "graphviz"] },
+    { name = "lyric-analyzer-base" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "apache-airflow", extras = ["celery", "google", "graphviz"], specifier = "==3.1.5" }]
+requires-dist = [
+    { name = "apache-airflow", extras = ["celery", "google", "graphviz"], specifier = "==3.1.5" },
+    { name = "lyric-analyzer-base", editable = "packages/lyric_analyzer_base" },
+]
 
 [[package]]
 name = "lyric-analyzer-base"
@@ -2859,11 +2863,15 @@ name = "lyric-analyzer-streamlit"
 version = "0.1.0"
 source = { virtual = "apps/dashboard" }
 dependencies = [
+    { name = "lyric-analyzer-base" },
     { name = "streamlit" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "streamlit", specifier = ">=1.52.2" }]
+requires-dist = [
+    { name = "lyric-analyzer-base", editable = "packages/lyric_analyzer_base" },
+    { name = "streamlit", specifier = ">=1.52.2" },
+]
 
 [[package]]
 name = "lyricsgenius"

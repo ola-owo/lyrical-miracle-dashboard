@@ -3,5 +3,9 @@ name = "lyric-analyzer-streamlit"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "lyric-analyzer-base",
     "streamlit>=1.52.2",
 ]
+
+# [tool.uv.sources]
+# lyric-analyzer-base = { workspace = true, editable = true }

@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "packages/lyric_analyzer_base"
+    ]
+}
