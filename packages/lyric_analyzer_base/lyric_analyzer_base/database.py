@@ -102,9 +102,11 @@ def duckdb_merge_table(
     raise Exception('TODO')
 
 
-def duckdb_query(query: str, read_only=False) -> DataFrame:
+def duckdb_query(query: str, params: list = None, read_only=False) -> DataFrame:
     """
     Run a query against the database and return the result as a DataFrame.
     """
+    if not params:
+        params = []
     with duckdb.connect(DUCKDB_FILE, read_only=read_only) as cxn:
-        return cxn.execute(query).pl()
+        return cxn.execute(query, params).pl()

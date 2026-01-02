@@ -72,3 +72,19 @@ def get_scrobbles_between(start: int, end: int):
             'limit': 1000,
         }
     )
+
+
+def get_image_url(track, artist, mbid=None):
+    """
+    Get an album image url
+    
+    :param track: Track name
+    :param artist: Artist name
+    :param mbid: MusicBrainz ID (optional)
+    """
+    return lastfm_request({
+        'method': 'track.getInfo',
+        'track': track,
+        'artist': artist,
+        'mbid': mbid
+    })

@@ -4,7 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "lyric-analyzer-base",
-    "streamlit>=1.52.2",
+    "plotly>=6.5.0",
+    "streamlit-agraph>=0.0.45",
+    "streamlit[charts]>=1.52.2",
 ]
 
 # [tool.uv.sources]

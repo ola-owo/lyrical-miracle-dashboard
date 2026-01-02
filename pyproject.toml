@@ -2,7 +2,14 @@
 name = "lyric-analyzer"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = ["lyric_analyzer_base"]
+dependencies = [
+    "duckdb>=1.4.3",
+    "lyric_analyzer_base",
+    "networkx>=3.6.1",
+    "numpy>=2.3.5",
+    "pendulum>=3.1.0",
+    "polars>=1.36.1",
+]
 
 [tool.uv.sources]
 lyric-analyzer-base = { workspace = true }
@@ -13,6 +20,7 @@ members = ["packages/*", "apps/*"]
 
 [dependency-groups]
 dev = [
+    "ipython>=9.8.0",
     "ruff>=0.14.10",
 ]
 
