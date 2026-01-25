@@ -1,18 +1,22 @@
 import json
 from time import sleep
 from random import random
-from io import StringIO
 from pathlib import Path
+import logging
 
 from airflow.sdk import task
 import polars as pl
 import polars.selectors as cs
 import numpy as np
 import duckdb
-from pendulum import date
+import pendulum as pn
+import fsspec
 
 from lyric_analyzer_base.genius import *
 from lyric_analyzer_base.database import *
+
+
+log = logging.getLogger(__name__)
 
 
 def normalize_song_titles(strings):
@@ -72,7 +76,7 @@ def search_songs() -> bool:
                 # one or more date components is None
                 release_date = None
             else:
-                release_date = date(
+                release_date = pn.date(
                     release_date_parts['year'],
                     release_date_parts['month'],
                     release_date_parts['day']
@@ -108,9 +112,9 @@ def search_songs() -> bool:
     )
 
     if df_genius_search_queries.is_empty():
-        print('No new songs to search.')
+        log.info('No new songs to search.')
         return False
-    print(f'{df_genius_search_queries.height} new songs to search')
+    log.info(f'{df_genius_search_queries.height} new songs to search')
 
     # build search queries
     df_genius_search_queries = df_genius_search_queries.with_columns(
@@ -136,7 +140,6 @@ def search_songs() -> bool:
         .get_column('index')
     )
     for i in no_id_rows:
-        # print(f'\r{i+1}/{len(no_id_rows)}', df_genius_search_queries[i, 'searchtext'], sep='\t', end='|')
         song = df_genius_search_queries[i, 'song']
         artist = df_genius_search_queries[i, 'artist']
         searchtext = df_genius_search_queries[i, 'searchtext']
@@ -263,7 +266,7 @@ def filter_search_results() -> bool:
         ])
     )
 
-    print(f'{df_genius_song_matches.height}/{df_unmatched_songs.height} songs matched.')
+    log.info(f'{df_genius_song_matches.height}/{df_unmatched_songs.height} songs matched.')
     with duckdb.connect(DUCKDB_FILE) as cxn:
         cxn.register('df_genius_song_matches', df_genius_song_matches)
         cxn.execute(
@@ -285,12 +288,7 @@ def filter_search_results() -> bool:
 def get_song_metadata() -> bool:
     '''
     Get full metadata from Genius for the input songs.
-
-    TODO: How to do this without reading/writing temp files?
-    pl.read_json() doesn't always get the schema right
-    Look into [fsspec](https://stackoverflow.com/a/76495452)
     '''
-    import tempfile
 
     df_genius_song_matches = duckdb_query(
         'select * from "genius_song_matches" gsm anti join "genius_full" gf on gsm.g_id = gf.id',
@@ -298,7 +296,7 @@ def get_song_metadata() -> bool:
     ).unique('g_id')
 
     n_search = df_genius_song_matches.height
-    print(f'{n_search} songs to search')
+    log.info(f'{n_search} songs to search')
     if n_search == 0:
         return False
 
@@ -309,18 +307,37 @@ def get_song_metadata() -> bool:
 
     # method 2 (works but not ideal): make a temporary jsonl file and append each json response to it,
     # then periodically write the file to the db using duckdb read_json()
-    jsonfile = tempfile.NamedTemporaryFile('wt', delete_on_close=False)
-    jsonfile.close()
-    jsonfile_len = 0
+    # jsonfile = tempfile.NamedTemporaryFile('wt', delete_on_close=False)
+    # jsonfile.close()
+    # jsonfile_len = 0
 
     # method 3 (TODO): same as method 2 but use a virtual in-memory file
     # like this: https://stackoverflow.com/a/76495452
+    json_buffer = []
+    JSON_FILE = 'records.json'
+    fs: fsspec.AbstractFileSystem = fsspec.filesystem('memory')
+
+    def dump_buffer(fs):
+        '''
+        Write records retrieved so far to duckdb.
+        '''
+        nonlocal json_buffer
+        with fs.open(JSON_FILE, 'wt') as f:
+            json.dump(json_buffer, f)
+        json_buffer = []
+        
+        with duckdb.connect(DUCKDB_FILE) as cxn:
+            cxn.register_filesystem(fs)
+            cxn.execute("INSERT OR IGNORE INTO genius_full SELECT * FROM read_json(?)",
+                        [f'memory://{JSON_FILE}'])
+
 
     gen = make_client()
     gen.sleep_time = 0.5 # seconds
     for i in range(n_search):
         sleep(random())
         song_id = df_genius_song_matches[i, 'g_id']
+        g_title = df_genius_song_matches[i, 'g_title']
 
         # API call!
         # This uses the public API which has a 10k/day request limit
@@ -328,7 +345,7 @@ def get_song_metadata() -> bool:
             res = gen.song(song_id)
         except AssertionError as e:
             if "Unexpected response status code: 404" in str(e):
-                print(f'song {song_id} returned 404 ({df_genius_song_matches[i, "g_title"]})')
+                log.error(f'song {song_id} returned 404 ({g_title})')
                 continue
             raise e
 
@@ -340,10 +357,13 @@ def get_song_metadata() -> bool:
         #     song_jsons.append(pl.read_json(f))
 
         # (method 2)
-        with open(jsonfile.name, 'at') as f:
-            json.dump(res['song'], f)
-            f.write('\n')
-            jsonfile_len += 1
+        # with open(jsonfile.name, 'at') as f:
+        #     json.dump(res['song'], f)
+        #     f.write('\n')
+        #     jsonfile_len += 1
+
+        # (method 3)
+        json_buffer.append(res['song'])
 
         # (method 1)
         # if len(song_jsons) >= 100:
@@ -352,10 +372,14 @@ def get_song_metadata() -> bool:
         #     song_jsons = []
 
         # (method 2)
-        if jsonfile_len >= 100:
-            with duckdb.connect(DUCKDB_FILE) as cxn:
-                cxn.execute('insert or ignore into "genius_full" select * from read_json(?)', [jsonfile.name])
-            jsonfile_len = 0
+        # if jsonfile_len >= 100:
+        #     with duckdb.connect(DUCKDB_FILE) as cxn:
+        #         cxn.execute('insert or ignore into "genius_full" select * from read_json(?)', [jsonfile.name])
+        #     jsonfile_len = 0
+
+        # (method 3)
+        if len(json_buffer) >= 100:
+            dump_buffer(fs)
 
     else:
         # write to db one last time if needed
@@ -365,11 +389,16 @@ def get_song_metadata() -> bool:
         #                        'genius_full', if_exists='append')
 
         # (method 2)
-        if jsonfile_len > 0:
-            with duckdb.connect(DUCKDB_FILE) as cxn:
-                cxn.execute('insert or ignore into "genius_full" select * from read_json(?)', [jsonfile.name])
+        # if jsonfile_len > 0:
+        #     with duckdb.connect(DUCKDB_FILE) as cxn:
+        #         cxn.execute('insert or ignore into "genius_full" select * from read_json(?)', [jsonfile.name])
 
-    Path(jsonfile.name).unlink()
+        # (method 3)
+        if len(json_buffer) > 0:
+            dump_buffer(fs)
+
+    # (method 2)
+    # Path(jsonfile.name).unlink()
     return True
 
 
@@ -384,56 +413,81 @@ def get_lyrics() -> bool:
     Maybe there's an "instrumental" flag in the full genius song data?
     '''
 
-    def write_lyrics(df_lyrics):
+    def write_lyrics(df_lyrics, mask=None):
+        '''Append lyrics gotten so far to db table'''
+        if mask:
+            df_lyrics = df_lyrics.filter(mask)
         duckdb_write_table(
-            df_lyrics.select(['g_id', 'lyrics']).drop_nulls('lyrics'),
+            df_lyrics.select(['g_id', 'lyrics']),
             'lyrics',
             if_exists='append')
 
     # get all song matches that we don't already have lyrics for
     df_lyrics = (
         duckdb_query(
-            'select * from "genius_song_matches" '
-            'left join "lyrics" using (g_id) '
-            'where lyrics is null',
+            (
+                'SELECT g_id, NULL as lyrics, g_path, g_title, g_release_date '
+                'FROM "genius_song_matches" '
+                'ANTI JOIN "lyrics" using (g_id) '
+            ),
             read_only=True
         )
         .unique('g_id')
     )
 
-    print(f'{df_lyrics.height} song lyrics to scrape')
+    # filter out old songs (TODO: move this into sql query)
+    release_date_cutoff = pn.Date.today().subtract(days=180)
+    df_lyrics = df_lyrics.filter((pl.col('g_release_date') > release_date_cutoff)
+                                 | pl.col('g_release_date').is_null())
+
+    log.info(f'{df_lyrics.height} song lyrics to scrape')
     if df_lyrics.is_empty():
         return False
 
+    df_lyrics_done = pl.Series([False] * df_lyrics.height)
     gen = make_client()
     gen.sleep_time = 2
     for i in range(df_lyrics.height):
+        g_id = df_lyrics[i, 'g_id']
+        g_path = df_lyrics[i, 'g_path']
+        g_title = df_lyrics[i, 'g_title']
+        g_release_date = df_lyrics[i, 'g_release_date']
 
         # API call!
         # This is actually a web scrape, not an API call.
         # Not sure what the rate limits are, a proxy might help
         try:
             # prefer song_url bc it saves an API call
-            if df_lyrics[i, 'g_path']:
-                res = gen.lyrics(song_url=df_lyrics[i, 'g_path'])
+            if g_path:
+                res = gen.lyrics(song_url=g_path)
             else:
-                res = gen.lyrics(song_id=df_lyrics[i, 'g_id'])
+                res = gen.lyrics(song_id=g_id)
         except AssertionError as e:
             if "Unexpected response status code: 404" in str(e):
-                print(f'song {df_lyrics[i, "g_id"]} returned 404 ({df_lyrics[i, "g_title"]})')
+                log.error(f'song {g_id} returned 404 ({g_title})')
                 continue
             # at this point, it's probably Too Many Requests or request Timeout
-            write_lyrics(df_lyrics)
+            write_lyrics(df_lyrics, df_lyrics_done)
             raise e
         except Exception as e:
-            write_lyrics(df_lyrics)
+            write_lyrics(df_lyrics, df_lyrics_done)
             raise e
 
         if not res:
-            print(f'song {df_lyrics[i, "g_id"]} returned no lyrics ({df_lyrics[i, "g_title"]})')
-            continue
+            log.warning(f'song {g_id} returned no lyrics ({g_title})')
+            if not g_release_date:
+                log.info('unknown song age - will try again later')
+                continue
+            elif (pn.Date.today() - g_release_date).days < 180:
+                log.info('song is still new - will try again later')
+                continue
+            else:
+                log.warning("song is old, so we won't query it anymore")
+                res = None
+
         df_lyrics[i, 'lyrics'] = res
+        df_lyrics_done[i] = True
         sleep(random())
 
-    write_lyrics(df_lyrics)
+    write_lyrics(df_lyrics, df_lyrics_done)
     return not df_lyrics.is_empty()

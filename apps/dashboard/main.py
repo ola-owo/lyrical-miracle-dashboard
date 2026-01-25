@@ -9,18 +9,13 @@ import polars.selectors as cs
 import numpy as np
 import polars as pl
 import polars.selectors as cs
+import networkx as nx
+from scipy import sparse
 
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.model_selection import KFold
-from sklearn.pipeline import make_pipeline
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 
 # import markov_clustering as mc
-import networkx as nx
 from plotly import graph_objects as go
 from plotly import express as px
 import plotly.colors
@@ -100,13 +95,63 @@ assert N_CLUSTERS <= len(PALETTE)
 
 @st.cache_data
 def run_kmeans():
-    return (
-        KMeans(N_CLUSTERS, random_state=RANDOM_SEED)
-        .fit(df_lyrics_embed['embedding'])
-    )
+    return KMeans(N_CLUSTERS, random_state=RANDOM_SEED).fit(df_lyrics_embed['embedding'])
 
-km = run_kmeans()
-# c = km.cluster_centers_
+
+@st.cache_data
+def run_spectral_clustering():
+    '''
+    (EXPERIMENTAL) Run spectral clustering.
+    For now, using symmetric normalized Laplacian bc its the only one that works well
+    '''
+    emb = df_lyrics_embed['embedding'].to_numpy()
+    assert N_CLUSTERS < emb.shape[0]
+    
+    def selfsim(mat):
+        '''
+        Compute pairwise similarity between embeddings matrix.
+        Input matrix should have one row per embedding.
+        '''
+        x = mat / np.linalg.norm(mat, axis=1).reshape((-1, 1))
+        return x @ x.T
+    
+    
+    def threshold(mat, thresh_pct):
+        '''
+        Keep the top `thresh_pct` most similar connections in `mat` (zero the rest),
+        and convert it to a sparse matrix.
+        '''
+        #print(np.quantile(mat.flatten(), np.linspace(0, 1, 10, endpoint=False)))
+        out = mat.copy()
+        thresh = np.quantile(mat, 1 - thresh_pct)
+        out[out < thresh] = 0
+        return sparse.bsr_array(out)
+    
+    
+    # build sparse graph
+    SIM_THRESH = 0.8 # proportion of connections to keep
+    emb_sim = selfsim(emb)
+    np.fill_diagonal(emb_sim, 0.0) # remove similarity of nodes to themselves
+    adj = threshold(emb_sim, SIM_THRESH)
+    
+    # compute symmetric normalized laplacian
+    # NOTE: when normed, degree matrix 0s are set to 1 and nonzeros are square-rooted
+    lap, deg = sparse.csgraph.laplacian(adj, normed=True, return_diag=True, copy=True)
+    
+    # get eigenvectors of laplacian
+    deg = sparse.diags_array(np.square(deg))
+    egvals, egvecs = sparse.linalg.eigsh(lap, k=N_CLUSTERS, which='SA')
+    egvecs_normalizer = np.linalg.norm(egvecs, axis=1).reshape((-1, 1))
+    egvecs_normalizer[egvecs_normalizer == 0] = 1
+    egvecs = egvecs / egvecs_normalizer
+    print('Laplacian eigenvalues:', egvals)
+    
+    # cluster the rows of the eigenvector matrix
+    return KMeans(N_CLUSTERS, random_state=RANDOM_SEED).fit(egvecs), egvecs
+
+
+# km = run_kmeans()
+km, spectra = run_spectral_clustering = run_spectral_clustering()
 df_cluster_labels = pl.DataFrame({
     'cluster': range(N_CLUSTERS),
     'cluster_label': [ALPHABET[i] for i in range(N_CLUSTERS)]
@@ -123,7 +168,10 @@ def get_df_embeddings_clustered():
         df_lyrics_embed
         .with_columns(pl.Series(km.labels_).alias('cluster'))
         .join(df_centroids, on='cluster')
-        .with_columns(pl.col('centroid').sub(pl.col('embedding')).alias('centroid_dist'))
+        # EXPERIMENTAL start
+        .with_columns(pl.col('centroid').sub(pl.Series(spectra)).alias('centroid_dist'))
+        # .with_columns(pl.col('centroid').sub(pl.col('embedding')).alias('centroid_dist'))
+        # EXPERIMENTAL end
         .with_columns(
             pl.col('centroid_dist').map_batches(
                 lambda vec: np.linalg.norm(vec, axis=1),
@@ -643,6 +691,49 @@ fig_bar_timebin = px.bar(
     },
 )
 st.plotly_chart(fig_bar_timebin)
+
+scrobbles_clustered_timebins = (
+    pl.DataFrame({'hour': list(range(24))})
+    .join(pl.DataFrame({'cluster': list(range(N_CLUSTERS))}),
+          how='cross')
+    .with_columns(pl.lit(0).alias('count'))
+)
+scrobbles_clustered_timebins = (
+    scrobbles_clustered
+    .group_by('cluster', pl.col('time').dt.hour().alias('hour'))
+    .len('count')
+    .join(scrobbles_clustered_timebins, on=['hour', 'cluster'], how='right')
+    .join(df_cluster_labels, 'cluster', 'left')
+    .with_columns(pl.coalesce('count', 'count_right'))
+    .sort('hour', 'cluster')
+)
+polar_hist_scrobble_times = px.bar_polar(
+    scrobbles_clustered_timebins,
+    r='count',
+    theta='hour',
+    color='cluster_label',
+    color_discrete_sequence=PALETTE,
+)
+polar_hist_scrobble_times.update_layout(
+    polar=dict(
+        angularaxis=dict(
+            type='category',
+            tickvals=list(range(24)),
+            direction='clockwise',
+            rotation=90,
+            period=24  # Forces the circle to represent 24 units
+        )
+    )
+)
+# polar_hist_scrobble_times = np.histogram(
+#     scrobbles_expanded.select(pl.col('time').dt.hour().alias('hour')).get_column('hour'),
+#     bins=24
+# )
+# polar_hist_scrobble_times = go.Figure(go.Barpolar(
+#     r=polar_hist_scrobble_times[0],
+#     theta=polar_hist_scrobble_times,
+# ))
+st.plotly_chart(polar_hist_scrobble_times)
 
 @st.fragment
 def plot_diversity():

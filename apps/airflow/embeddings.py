@@ -1,4 +1,5 @@
 from time import sleep
+import logging
 
 from airflow.sdk import task
 
@@ -9,12 +10,19 @@ from lyric_analyzer_base.database import *
 from lyric_analyzer_base.keys import get_keys
 
 
+log = logging.getLogger(__name__)
+
+
 @task
 def embed_lyrics() -> bool:
     '''
     Get song lyrics embeddings using Gemini API
 
-    TODO: Split by token count instead, use Gemini token-counter API
+    NOTE: embeddings model (gemini-embedding-001) has a 2048 token limit per request,
+    so some long songs might be truncated.
+
+    Embedding model info: ai.google.dev/gemini-api/docs/embeddings#model-versions
+    Pricing: ai.google.dev/gemini-api/docs/pricing#batch_13
     '''
 
     # Number of songs to process per batch
@@ -26,32 +34,32 @@ def embed_lyrics() -> bool:
 
     # get lyrics that don't have embeddings yet
     df_lyrics_new = duckdb_query(
-        'select * from "lyrics" '
-        'anti join "lyrics_embed" using (g_id)',
+        'SELECT * FROM "lyrics" '
+        'ANTI JOIN "lyrics_embed" USING (g_id) '
+        'WHERE lyrics IS NOT NULL',
         read_only=True
     )
     if df_lyrics_new.is_empty():
+        log.info('Nothing to do')
         return False
 
+    # build a table of (key, request) pairs to be fed into gemini api
+    # we use the genius song id as the key, and the lyrics as the request body
     lyrics_to_obj = lambda text: {"parts": [{"text": text}]}
     struct_type = pl.Struct({
         'parts': pl.List(pl.Struct({
             'text': pl.String
         }))
     })
-
-    # build a table of (key, request) pairs to be fed into gemini api
-    # we use the genius song id as the key, and the lyrics as the request body
     lyrics_requests = (
         df_lyrics_new
         .select([
             pl.col('g_id').cast(pl.String).alias('key'),
-            pl.col('lyrics')
+            pl.col('lyrics').map_elements(lyrics_to_obj, return_dtype=struct_type)
                 .alias('request')
-                .map_elements(lyrics_to_obj, return_dtype=struct_type)
         ])
     )
-    print(f'{lyrics_requests.height} songs need embeddings')
+    log.info(f'{lyrics_requests.height} songs need embeddings')
 
     '''
     - split df_lyrics into blocks
@@ -70,22 +78,22 @@ def embed_lyrics() -> bool:
         job = gemini_client.batches.create_embeddings(
             model='gemini-embedding-001',
             src={'inlined_requests': {
-                'config': {'output_dimensionality': EMBEDDING_DIM},
-                'contents': df['request'].to_list()}},
+                 'config': {'output_dimensionality': EMBEDDING_DIM},
+                 'contents': df['request'].to_list()}},
             config={'display_name': 'lyrics-batch-embeddings'})
 
         while True:
             job = gemini_client.batches.get(name=job.name)
             if job.state.name in ('JOB_STATE_SUCCEEDED', 'JOB_STATE_FAILED', 'JOB_STATE_CANCELLED'):
                 break
-            print(f'Job state: {job.state.name}. Waiting {JOB_POLL_TIME} seconds...')
+            log.info(f'Job state: {job.state.name}. Waiting {JOB_POLL_TIME} seconds...')
             sleep(JOB_POLL_TIME)
 
-        print(f"Job finished with state: {job.state.name}")
         if job.state.name == 'JOB_STATE_FAILED':
-            print(f"Error: {job.error}")
+            log.error(f"Job error: {job.error}")
             break
 
+        log.info(f"Job finished with state: {job.state.name}")
         if job.state.name == 'JOB_STATE_SUCCEEDED':
             resp = job.dest.inlined_embed_content_responses
             embeddings_list.extend([r.response.embedding.values for r in resp])

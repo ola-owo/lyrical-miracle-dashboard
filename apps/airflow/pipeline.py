@@ -1,12 +1,16 @@
-from airflow.sdk import ObjectStoragePath, dag, task
+from airflow.sdk import dag
+import pendulum as pnd
 
 import get_scrobbles, genius, embeddings
 
 
 @dag(
     dag_id='lyrics_analyzer',
-    schedule=None,
+    start_date=pnd.datetime(2020, 1, 1, tz='UTC'),
+    schedule='@weekly',
     catchup=False,
+    max_active_runs=1,
+    max_active_tasks=1, # limited for now bc of duckdb
 )
 def pipeline():
     got_new_scrobbles = get_scrobbles.get_scrobbles()
