@@ -5,7 +5,6 @@ from .keys import get_keys_lastfm
 API_BASE = 'https://ws.audioscrobbler.com/2.0'
 LASTFM_KEYS = get_keys_lastfm()
 BASE_PARAMS = {'format': 'json', 'api_key': LASTFM_KEYS['key']}
-LASTFM_USER = LASTFM_KEYS['user']
 
 
 def lastfm_request(params: dict):
@@ -24,7 +23,7 @@ def lastfm_request(params: dict):
     return resp
 
 
-def get_old_scrobbles(until: int):
+def get_old_scrobbles(until: int, limit: int = 1000):
     """
     Get the 1000 latest scrobbles before timestamp `until`
 
@@ -33,14 +32,14 @@ def get_old_scrobbles(until: int):
     return lastfm_request(
         {
             'method': 'user.getRecentTracks',
-            'user': 'ooowo',
+            'user': LASTFM_KEYS['user'],
             'to': until,
-            'limit': 1000,
+            'limit': limit,
         }
     )
 
 
-def get_new_scrobbles(since: int):
+def get_new_scrobbles(since: int, limit: int = 1000):
     """
     Get the 1000 latest scrobbles after timestamp `since`.
 
@@ -49,14 +48,14 @@ def get_new_scrobbles(since: int):
     return lastfm_request(
         {
             'method': 'user.getRecentTracks',
-            'user': 'ooowo',
+            'user': LASTFM_KEYS['user'],
             'from': since,
-            'limit': 1000,
+            'limit': limit,
         }
     )
 
 
-def get_scrobbles_between(start: int, end: int):
+def get_scrobbles_between(start: int, end: int, limit: int = 1000):
     """
     Get the 1000 latest scrobbles between timestamps `start` and `end`.
 
@@ -66,10 +65,10 @@ def get_scrobbles_between(start: int, end: int):
     return lastfm_request(
         {
             'method': 'user.getRecentTracks',
-            'user': 'ooowo',
+            'user': LASTFM_KEYS['user'],
             'from': start,
             'to': end,
-            'limit': 1000,
+            'limit': limit,
         }
     )
 
