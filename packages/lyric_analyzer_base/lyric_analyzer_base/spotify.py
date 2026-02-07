@@ -9,6 +9,8 @@ SPOTIFY API IDEAS:
 - gets top tracks/artists based on "affinity"
 """
 
+from typing import Any
+
 import requests
 from requests.utils import quote
 
@@ -16,6 +18,7 @@ from .keys import get_keys_spotify
 
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE = 'https://api.spotify.com/v1'
+type Token = dict[str, Any]
 
 
 class SpotifyClient:
@@ -23,7 +26,7 @@ class SpotifyClient:
         keypair = get_keys_spotify()
         self.key = keypair['key']
         self.secret = keypair['secret']
-        self.token = None
+        self.token: Token = None
         self.header = None
         self.refresh_token()  # update token and header
 
@@ -31,14 +34,14 @@ class SpotifyClient:
         """
         Get a new auth token from spotify
         """
-        token = self.get_token(self.key, self.secret)
+        token = self._get_token(self.key, self.secret)
         self.token = token
         self.header = {
             'Authorization': f'{token["token_type"]} {token["access_token"]}'
         }
 
     @staticmethod
-    def get_token(key, secret) -> dict:
+    def _get_token(key, secret) -> Token:
         resp = requests.post(
             TOKEN_URL,
             {

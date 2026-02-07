@@ -3050,7 +3050,6 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "duckdb" },
-    { name = "google-cloud-aiplatform" },
     { name = "lyric-analyzer-base" },
     { name = "networkx" },
     { name = "numpy" },
@@ -3067,7 +3066,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.4.3" },
-    { name = "google-cloud-aiplatform", specifier = ">=1.132.0" },
     { name = "lyric-analyzer-base", editable = "packages/lyric_analyzer_base" },
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = ">=2.3.5" },

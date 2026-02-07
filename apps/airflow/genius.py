@@ -1,7 +1,6 @@
 import json
 from time import sleep
 from random import random
-from pathlib import Path
 import logging
 
 from airflow.sdk import task

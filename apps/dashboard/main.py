@@ -150,8 +150,8 @@ def run_spectral_clustering():
     return KMeans(N_CLUSTERS, random_state=RANDOM_SEED).fit(egvecs), egvecs
 
 
-# km = run_kmeans()
-km, spectra = run_spectral_clustering = run_spectral_clustering()
+km = run_kmeans()
+# km, spectra = run_spectral_clustering = run_spectral_clustering()
 df_cluster_labels = pl.DataFrame({
     'cluster': range(N_CLUSTERS),
     'cluster_label': [ALPHABET[i] for i in range(N_CLUSTERS)]
@@ -169,8 +169,8 @@ def get_df_embeddings_clustered():
         .with_columns(pl.Series(km.labels_).alias('cluster'))
         .join(df_centroids, on='cluster')
         # EXPERIMENTAL start
-        .with_columns(pl.col('centroid').sub(pl.Series(spectra)).alias('centroid_dist'))
-        # .with_columns(pl.col('centroid').sub(pl.col('embedding')).alias('centroid_dist'))
+        # .with_columns(pl.col('centroid').sub(pl.Series(spectra)).alias('centroid_dist'))
+        .with_columns(pl.col('centroid').sub(pl.col('embedding')).alias('centroid_dist'))
         # EXPERIMENTAL end
         .with_columns(
             pl.col('centroid_dist').map_batches(
@@ -178,6 +178,7 @@ def get_df_embeddings_clustered():
                 returns_scalar=True, return_dtype=pl.Float64
             )
         )
+        .drop('centroid')
     )
 
 df_embeddings_clustered = get_df_embeddings_clustered()
@@ -195,9 +196,9 @@ TIME_BIN_BOUNDARIES = (6, 12, 18)
 TIME_BIN_LABELS = ('morning', 'midday', 'evening', 'night')
 TIME_BIN_PALETTE = ('#e2e38b', '#e7a553', '#7e4b68', '#292965')
 @st.cache_data
-def get_scrobbles_expanded():
+def get_scrobbles_expanded() -> pl.DataFrame:
     return (
-        duckdb_read_table_cached('scrobbles')
+        duckdb_read_table_cached('scrobbles').lazy()
         .with_columns(pl.from_epoch(pl.col('ts'))
                       .dt.convert_time_zone(TIME_ZONE).alias('dt'))
         .with_columns(
@@ -215,17 +216,19 @@ def get_scrobbles_expanded():
                       .cut(TIME_BIN_BOUNDARIES, labels=TIME_BIN_LABELS, left_closed=True)
                       .cast(pl.Enum(TIME_BIN_LABELS))
                       .alias('timebin'))
+        .collect()
     )
 
 @st.cache_data
-def get_scrobbles_clustered():
+def get_scrobbles_clustered() -> pl.DataFrame:
     return (
-        df_lyrics_embed.with_columns(pl.Series(km.labels_).alias('cluster'))
-        .join(df_lyrics, on='g_id', how='inner')
+        df_lyrics_embed.lazy()
+        .with_columns(pl.Series(km.labels_).alias('cluster'))
+        .join(df_lyrics.lazy(), on='g_id', how='inner')
         # merge with genius song metadata
-        .join(df_genius, on='g_id', how='inner')
+        .join(df_genius.lazy(), on='g_id', how='inner')
         # merge with scrobbles
-        .join(scrobbles_expanded, on=('artist','song'))
+        .join(scrobbles_expanded.lazy(), on=('artist','song'))
         # group into sessions of at most 1 day between scrobbles
         .sort('dt')
         .with_columns(
@@ -233,6 +236,7 @@ def get_scrobbles_clustered():
             pl.col('dt').dt.month().alias('month'),
             pl.col('dt').dt.year().alias('year'),
             )
+        .collect()
     )
 
 scrobbles_expanded = get_scrobbles_expanded()
@@ -243,15 +247,9 @@ def plot_network_agraph(g: nx.Graph, images: dict[int, str] = None):
     from streamlit_agraph import agraph, Node, Edge, Config
     import plotly
     
-
-    n_nodes = len(g)
-    # node_labels = [ALPHABET[i] for i in range(n_nodes)]
     node_labels = g.nodes(data='name')
     edges = g.edges(data='weight') # list of (src, dst, weight) tuples
     nodes = g.nodes(data='weight') # dict of {node: weight}
-    # edge_weights = [e[2] for e in edges]
-    # out_degrees = g.out_degree(weight='weight')
-
     nodes = [Node(
             id=i,
             label=node_labels[i],
@@ -287,7 +285,7 @@ def plot_network_agraph(g: nx.Graph, images: dict[int, str] = None):
 SES_MAX_GAP = pl.duration(days=1)
 
 df_sessions = (
-    scrobbles_clustered
+    scrobbles_clustered.lazy()
     .with_columns(pl.col('timediff').fill_null(pl.duration()).gt(SES_MAX_GAP).cum_sum().alias('session'))
     # add session-level stats
     .with_columns(
@@ -305,10 +303,11 @@ df_sessions = (
                 returns_scalar=True, return_dtype=pl.Float64
             )
         )
-    .join(df_cluster_labels, 'cluster', 'left')
+    .join(df_cluster_labels.lazy(), 'cluster', 'left')
     .select(['session', 'ses_start', 'ses_end', 'ses_dur', 'ses_len', 'n_within_ses',
              'dt', 'timebin', 'year', 'month', 'timediff', 'cluster', 'prev_cluster',
              'cluster_label', 'latent_dist', 'g_id', 'song', 'artist', 'album'])
+    .collect()
 )
 
 
@@ -320,7 +319,7 @@ df_months = df_sessions.select(['year','month']).unique().sort(['year','month'])
 n_months = df_months.height
 
 @st.cache_data
-def get_month_ix(year: int, month: int):
+def get_month_ix(year: int, month: int) -> int|None:
     '''
     Get the index corresponding to the given year/month.
     This is used to index `df_sessions_parts` and other lists based on it
@@ -339,34 +338,37 @@ def get_month_ix(year: int, month: int):
     return rowix.item() if not rowix.is_empty() else None
 
 
-# df_sessions_parts = df_sessions.partition_by(['year', 'month'])
 @st.cache_data
-def get_df_sessions(month_ix):
-    return df_sessions.join(df_months[month_ix], on=['year','month'], how='semi')
+def get_df_sessions_this_month(month_ix: int) -> pl.DataFrame:
+    # return df_sessions.join(df_months[month_ix].lazy(), on=['year','month'], how='semi')
+    return df_sessions.filter(pl.col('year')==df_months[month_ix, 'year'] &
+                              pl.col('month')==df_months[month_ix, 'month'])
 
 
 @st.cache_data
-def get_cluster_stats(df):
+def get_cluster_stats(df: pl.DataFrame|pl.LazyFrame) -> pl.DataFrame:
     return (
-        df.group_by('cluster').agg(
+        df.lazy()
+        .group_by('cluster').agg(
             pl.len().alias('n_plays'),
             pl.col('g_id').unique().len().alias('n_unique_plays'),
             pl.col('session').unique().len().alias('n_sessions'),
             pl.col('g_id').mode().first().alias('top_song_id'),
-            )
+        )
         .sort('cluster')
         .with_columns((pl.col('n_plays') / pl.col('n_plays').sum()).alias('freq'))
-        .join(df_centroids, 'cluster', 'full', coalesce=True)
+        .join(df_centroids.lazy(), 'cluster', 'full', coalesce=True)
         .with_columns(pl.col('freq', 'n_plays', 'n_unique_plays', 'n_sessions').replace(None, 0))
         .select(['cluster', 'cluster_label', 'freq', 'n_plays', 'n_unique_plays',
                 'n_sessions', 'top_song_id', 'centroid'])
+        .collect()
     )
 
-
 @st.cache_data
-def get_df_monthly_stats(month_ix):
+def get_df_monthly_stats(month_ix: int) -> pl.DataFrame:
     return (
-        get_df_sessions(month_ix).select(
+        get_df_sessions_this_month(month_ix)
+        .select(
             'year', 'month',
             pl.len().alias('n_plays'),
             pl.col('session').max().add(1).alias('n_sessions'),
@@ -382,6 +384,7 @@ def get_df_monthly_stats(month_ix):
             pl.col('cluster_mode_count').truediv(pl.col('n_plays')).alias('cluster_mode_freq'),
             )
         .sort('date')
+        .collect()
     )
 
 
@@ -390,18 +393,18 @@ def get_df_stats_all_months():
     # compute gini and shannon diversity:
     # https://en.wikipedia.org/wiki/Diversity_index
     group_agg = (
-        df_sessions
+        df_sessions.lazy()
         .group_by(['year', 'month', 'cluster']).agg(pl.len())
         .with_columns((pl.col('len') / pl.col('len').sum().over(['year','month'])).alias('p'))
         .group_by(['year', 'month']).agg(
             pl.col('p').pow(2).sum().alias('gini'),
             (-pl.col('p') * pl.col('p').log(2)).sum().alias('shannon'),
-            pl.col('p').max().pow(-1).alias('berger')
+            pl.col('p').max().pow(-1).alias('berger'),
             )
     )
 
     return (
-        df_sessions
+        df_sessions.lazy()
         .group_by(['year', 'month']).agg(
             pl.len().alias('n_plays'),
             pl.col('session').max().add(1).alias('n_sessions'),
@@ -412,23 +415,24 @@ def get_df_stats_all_months():
             #     .alias('cluster_mode_freq'),
             pl.col('cluster').eq(pl.col('cluster').mode().first())
                 .sum().alias('cluster_mode_count'),
-            )
+            pl.col('latent_dist').drop_nans().mean().alias('latent_dist_mean'),
+            pl.col('latent_dist').drop_nans().median().alias('latent_dist_med'),
+        )
         .with_columns(
             pl.date(pl.col('year'), pl.col('month'), 1),
             pl.col('cluster_mode_count').truediv(pl.col('n_plays')).alias('cluster_mode_freq'),
             )
         .join(group_agg, on=['year', 'month'])
         .sort(['year', 'month'])
+        .collect()
     )
 
 df_stats_all_months = get_df_stats_all_months()
-
 df_cluster_stats = get_cluster_stats(df_sessions)
 
-# df_cluster_monthly_stats = [get_cluster_stats(df) for df in df_sessions_parts]
 @st.cache_data
 def get_df_cluster_monthly_stats(month_ix):
-    return get_cluster_stats(get_df_sessions(month_ix))
+    return get_cluster_stats(get_df_sessions_this_month(month_ix))
 
 top_cluster_per_month = (
     scrobbles_clustered
@@ -443,23 +447,24 @@ top_cluster_per_month = (
 ### Get representative songs per cluster
 ###
 @st.cache_data
-def get_cluster_similar_tracks(month_ix=None):
+def get_cluster_similar_tracks(month_ix=None) -> pl.DataFrame:
     if month_ix:
-        session_data = get_df_sessions(month_ix)
+        session_data = get_df_sessions_this_month(month_ix)
     else:
         session_data = df_sessions
 
     top_tracks = (
-        df_embeddings_clustered
-        .join(session_data, on='g_id')
+        df_embeddings_clustered.lazy()
+        .join(session_data.lazy(), on='g_id')
         .filter(pl.col('centroid_dist').rank('dense').over('cluster') <= 3)
-        .join(df_genius, on='g_id')
+        .join(df_genius.lazy(), on='g_id')
         .unique(['cluster', 'g_id'])
         .drop(cs.ends_with('_right'))
-        .join(df_cluster_stats.select(['cluster', 'cluster_label']), 'cluster', 'left')
+        .join(df_cluster_stats.lazy().select(['cluster', 'cluster_label']), 'cluster', 'left')
         .sort('cluster', 'centroid_dist')
         .rename({'g_id': 'id'})
         .drop([cs.starts_with('g_'), 'timediff', 'searchtext'])
+        .collect()
     )
 
     return top_tracks
@@ -471,7 +476,7 @@ def get_cluster_similar_tracks(month_ix=None):
 @st.cache_data
 def get_df_centroid_similar_tracks(month_ix=None):
     if month_ix is None:
-        sessions_with_embeddings = df_embeddings_clustered.join(get_df_sessions(month_ix), on='g_id')
+        sessions_with_embeddings = df_embeddings_clustered.join(get_df_sessions_this_month(month_ix), on='g_id')
     else:
         sessions_with_embeddings = df_embeddings_clustered
 
@@ -524,7 +529,7 @@ ses_graph_full.add_weighted_edges_from(
 # monthly graphs
 @st.cache_data
 def get_ses_graph(month_ix):
-    df = get_df_sessions(month_ix)
+    df = get_df_sessions_this_month(month_ix)
     g = nx.DiGraph()
     g.add_nodes_from([
         (c, {'name': n, 'weight': w}) for c,n,w in
@@ -562,19 +567,22 @@ cluster_similar_tracks_this_month = get_cluster_similar_tracks(st.session_state.
 cluster_graph = get_ses_graph(st.session_state.month_ix) \
     if st.session_state.month_ix else ses_graph_full
 
-cluster_stats_this_period = get_df_cluster_monthly_stats(st.session_state.month_ix) \
-    if st.session_state.month_ix else df_cluster_stats
+cluster_stats_this_period = get_cluster_stats(
+    get_df_sessions_this_month(st.session_state.month_ix)
+) if st.session_state.month_ix else df_cluster_stats
 
 # album art metadata
 image_meta = (
-    cluster_similar_tracks_this_month
+    cluster_similar_tracks_this_month.lazy()
     # top (closest to centroid) result per cluster
     .filter(pl.col('centroid_dist') == pl.col('centroid_dist').min().over('cluster'))
     .unique('cluster')
     # get song names/ids
-    .join(scrobbles_expanded.select(['song', 'artist', 'song_id']), ['song','artist'], how='left')
+    .join(scrobbles_expanded.lazy().select(['song', 'artist', 'song_id']),
+          ['song','artist'], how='left')
     .select(['cluster', 'cluster_label', 'song', 'artist', 'song_id', pl.col('id').alias('g_id')])
     .sort('cluster')
+    .collect()
 )
 
 # album art image urls
@@ -692,20 +700,35 @@ fig_bar_timebin = px.bar(
 )
 st.plotly_chart(fig_bar_timebin)
 
+
+st.subheader('Latent distance between songs')
+fig_bar_timebin = px.bar(
+    df_stats_all_months,
+    x='date',
+    y='latent_dist_mean',
+    barmode='group',
+    labels={
+        'date': 'Date',
+        'latent_dist_mean': 'Latent-space distance',
+    },
+)
+st.plotly_chart(fig_bar_timebin)
+
+
 scrobbles_clustered_timebins = (
-    pl.DataFrame({'hour': list(range(24))})
-    .join(pl.DataFrame({'cluster': list(range(N_CLUSTERS))}),
-          how='cross')
+    pl.LazyFrame({'hour': list(range(24))})
+    .join(pl.LazyFrame({'cluster': list(range(N_CLUSTERS))}), how='cross')
     .with_columns(pl.lit(0).alias('count'))
 )
 scrobbles_clustered_timebins = (
-    scrobbles_clustered
+    scrobbles_clustered.lazy()
     .group_by('cluster', pl.col('time').dt.hour().alias('hour'))
     .len('count')
     .join(scrobbles_clustered_timebins, on=['hour', 'cluster'], how='right')
-    .join(df_cluster_labels, 'cluster', 'left')
+    .join(df_cluster_labels.lazy(), 'cluster', 'left')
     .with_columns(pl.coalesce('count', 'count_right'))
     .sort('hour', 'cluster')
+    .collect()
 )
 polar_hist_scrobble_times = px.bar_polar(
     scrobbles_clustered_timebins,

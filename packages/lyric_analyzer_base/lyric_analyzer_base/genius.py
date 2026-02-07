@@ -18,26 +18,50 @@ _excluded_terms = [
     'instrumental',
     # exclude translations:
     'tradução',
+    'traduções',
     'traduccion',
     'traducción',
-    'çeviri',
-    'traduzione',
-    'перевод',
-    'переклад',
+    'traducciones',
+    'traducciónes',
     'traduction',
+    'traductions',
+    'traduzione',
+    'traduzioni',
+    'vertaling',
+    'vertalingen',
     'Übersetzung',
     'Ubersetzung',
+    'Übersetzungen',
+    'Ubersetzungen',
+    'перевод',
+    'переводы',
+    'переклад',
+    'переклади',
+    'çeviri',
+    'çeviriler'
+    'अनुवाद',
+    '翻译',
+    '翻訳',
 ]
 
-
-def make_client():
+def make_client(
+    verbose=False,
+    remove_section_headers=True,
+    skip_non_songs=True,
+    excluded_terms=_excluded_terms,
+    sleep_time=1,
+    timeout=15,
+    retries=1,
+    **kwargs
+):
     return Genius(
         get_key_genius(),
-        verbose=False,
-        remove_section_headers=True,
-        skip_non_songs=True,
-        excluded_terms=_excluded_terms,
-        sleep_time=1,
-        timeout=15,
-        retries=1,
+        verbose=verbose,
+        remove_section_headers=remove_section_headers,
+        skip_non_songs=skip_non_songs,
+        excluded_terms=excluded_terms,
+        sleep_time=sleep_time,
+        timeout=timeout,
+        retries=retries,
+        **kwargs
     )
