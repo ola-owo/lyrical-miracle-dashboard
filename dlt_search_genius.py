@@ -11,6 +11,7 @@ import logging
 import polars as pl
 import polars.selectors as cs
 import pyarrow as pa
+from tqdm import tqdm
 import duckdb
 import dlt
 from dlt import source, resource, transformer
@@ -20,7 +21,7 @@ from lyric_analyzer_base.genius import make_client
 from lyric_analyzer_base.genius import _excluded_terms
 from lyric_analyzer_base.utils import normalize_song_titles
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('dlt')
 
 DATA_DIR = Path('data')
 SPOTIFY_DATABASE = DATA_DIR / 'spotify.duckdb'
@@ -108,7 +109,13 @@ def genius_searches(tracks):
         pl.col('artist')
     ], separator=' ').alias('searchtext'))
 
-    for track in tracks.to_dicts():
+    track_iter = tqdm(
+        tracks.to_dicts(),
+        desc='searching for tracks',
+        leave=False,
+        unit='req'
+    )
+    for track in track_iter:
         no_result = {
             # blank record indicates no search results
             'id': track['id'],
