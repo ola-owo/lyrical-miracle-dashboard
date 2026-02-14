@@ -7,15 +7,17 @@ from pathlib import Path
 import duckdb
 import polars as pl
 import polars.selectors as cs
+from tqdm import tqdm
 import dlt
 from dlt import source, resource, transformer
 from dlt.sources.helpers.requests.retry import Client
+from dlt.sources.helpers.requests import HTTPError
 
 from lyric_analyzer_base.genius import make_client, _excluded_terms
 from lyric_analyzer_base.database import *
 
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('dlt')
 SPOTIFY_DB = Path('data/spotify.duckdb')
 
 # Build the lyricsgenius client
@@ -34,29 +36,50 @@ def song_meta(song_id: int):
     Lookup song metadata from Genius.
     This uses the public API which has a 10k requests/day limit
     '''
-    res = genius.song(song_id)
-    if res:
-        yield res['song']
+    try:
+        res = genius.song(song_id)
+    except AssertionError as e:
+        if isinstance(e.__context__, HTTPError):
+            httperr = e.__context__
+            if httperr.response.status_code != 429:
+                log.error("Request '%s' failed: %s", f'/songs/{song_id}', str(httperr))
+                return None
+            else:
+                raise httperr
+        else:
+            raise e
+    if not res:
+        log.error("Request '%s' returned empty", f'/songs/{song_id}')
+        return None
+    return res['song']
 
 
 DEST_TABLE = 'songs'
 duckdb_dest = dlt.destinations.duckdb(str(SPOTIFY_DB))
-pipeline = dlt.pipeline('genius_song_meta', destination=duckdb_dest, dataset_name='genius')
+pipeline = dlt.pipeline('genius_song_meta', destination=duckdb_dest, dataset_name='genius', progress='tqdm')
 if DEST_TABLE in pipeline.dataset().tables:
     song_ids_old = pl.DataFrame(pipeline.dataset()[DEST_TABLE][['id']].arrow())
-    log.info(f'filtering out {song_ids_old.height} old songs')
+    log.warning(f'filtering out {song_ids_old.height} old songs')
 else:
     song_ids_old = pl.DataFrame(schema={'id': pl.Int64})
 
 with duckdb.connect(SPOTIFY_DB, read_only=True) as cxn:
-    song_ids = cxn.sql('''select distinct g_id as id from genius.song_matches
-                       anti join "song_ids_old" using (id)''').pl()
+    song_ids = cxn.sql('''select distinct g_id as id from genius.song_matches t1
+                       anti join "song_ids_old" t2 on (t1.g_id = t2.id)''').pl()
 
 n_search = song_ids.height
-log.info(f'{n_search} songs to search')
+log.warning(f'{n_search} songs to search')
 
-for i, song_ids_part in enumerate(song_ids.iter_slices(50)):
-    print(f'\rloading chunk {i+1}:', end='')
+CHUNK_SIZE = 50
+song_ids_iter = tqdm(
+    enumerate(song_ids.iter_slices(CHUNK_SIZE)),
+    total=round(song_ids.height / CHUNK_SIZE),
+    desc=f'getting song metadata ({CHUNK_SIZE}/chunk)',
+    leave=False,
+    unit='chunk'
+)
+for i, song_ids_part in song_ids_iter:
+    # print(f'\rloading chunk {i+1}:', end='')
     song_ids_part = song_ids_part['id'].to_arrow()
     load_info = pipeline.run(
         song_ids_part | song_meta(),
