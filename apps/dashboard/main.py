@@ -53,6 +53,8 @@ df_lyrics = duckdb_read_table_cached('lyrics')
 df_lyrics_embed = duckdb_read_table_cached('lyrics_embed')
 df_genius = duckdb_read_table_cached('genius_song_matches')
 
+df_lyrics_big5 = pl.read_parquet('data/genius_lyrics_big5.parquet')
+
 
 ###
 ### Get album art
@@ -341,8 +343,8 @@ def get_month_ix(year: int, month: int) -> int|None:
 @st.cache_data
 def get_df_sessions_this_month(month_ix: int) -> pl.DataFrame:
     # return df_sessions.join(df_months[month_ix].lazy(), on=['year','month'], how='semi')
-    return df_sessions.filter(pl.col('year')==df_months[month_ix, 'year'] &
-                              pl.col('month')==df_months[month_ix, 'month'])
+    return df_sessions.filter((pl.col('year')==df_months[month_ix, 'year']) &
+                              (pl.col('month')==df_months[month_ix, 'month']))
 
 
 @st.cache_data
@@ -614,6 +616,81 @@ st.title('The Lyrical Miracle')
 st.header('Graph of listening sessions')
 st.write(plot_network_agraph(cluster_graph, image_dict))
 
+
+@st.fragment
+def plot_big5(month_ix=None):
+    if month_ix is not None:
+        big5 = (
+            get_df_sessions_this_month(month_ix)
+            .join(df_lyrics_big5, on='g_id', how='left')
+            .select(df_lyrics_big5.columns)
+        )
+    else:
+        big5 = df_lyrics_big5
+    st.subheader('Your Music Personality')
+    BIG5_TRAITS = (
+        'Openness to Experience',
+        'Conscientiousness',
+        'Extraversion',
+        'Agreeableness',
+        'Neuroticism',
+    )
+    BIG5_TRAITS_SHORT = list('OCEAN')
+    BIG5_TRAITS_POS = (
+        'Open to experience',
+        'Organized',
+        'Extraverted',
+        'Agreeable',
+        'Neurotic',
+    )
+    BIG5_TRAITS_NEG = (
+        'Closed to experince',
+        'Messy',
+        'Introverted',
+        'Disagreeable',
+        'Emotionally stable',
+    )
+    big5 = (
+        big5
+        .with_columns(trait = pl.lit(BIG5_TRAITS_SHORT))
+        .select(
+            trait = pl.col('trait').list.explode(),
+            logit = pl.col('logits').arr.explode(),
+        )
+        .group_by('trait', maintain_order=True).mean()
+        .with_columns(
+            trait_desc = pl.when(pl.col('logit') >= 0)
+                .then(pl.Series(BIG5_TRAITS_POS))
+                .otherwise(pl.Series(BIG5_TRAITS_NEG)),
+            score = pl.col('logit').tanh(),
+        )
+        .with_columns(score_pct = pl.col('score').abs() * 100)
+    )
+    fig_bar_big5 = px.bar(
+        big5,
+        x=BIG5_TRAITS_SHORT,
+        y='score',
+        labels={
+            'trait': 'Trait',
+            'score': 'Score',
+        },
+        color='trait',
+        custom_data=['score_pct', 'trait_desc'],
+    )
+    fig_bar_big5.update_traces(
+        hovertemplate="%{customdata[0]:.0f}% <b>%{customdata[1]}</b><extra></extra>"
+    )
+    fig_bar_big5.update_layout(
+        yaxis=dict(  
+            tickformat='.0%',
+            # title='Score',
+        ),
+        hovermode='x',
+    )  
+    st.plotly_chart(fig_bar_big5)
+plot_big5()
+
+
 # pie chart of plays per cluster
 st.header('Song plays per cluster')
 st.plotly_chart(go.Figure([go.Pie(
@@ -624,6 +701,43 @@ st.plotly_chart(go.Figure([go.Pie(
     sort=False,
     marker=dict(colors=PALETTE),
 )]))
+
+
+scrobbles_clustered_timebins = (
+    pl.LazyFrame({'hour': list(range(24))})
+    .join(pl.LazyFrame({'cluster': list(range(N_CLUSTERS))}), how='cross')
+    .with_columns(pl.lit(0).alias('count'))
+)
+scrobbles_clustered_timebins = (
+    scrobbles_clustered.lazy()
+    .group_by('cluster', pl.col('time').dt.hour().alias('hour'))
+    .len('count')
+    .join(scrobbles_clustered_timebins, on=['hour', 'cluster'], how='right')
+    .join(df_cluster_labels.lazy(), 'cluster', 'left')
+    .with_columns(pl.coalesce('count', 'count_right'))
+    .sort('hour', 'cluster')
+    .collect()
+)
+polar_hist_scrobble_times = px.bar_polar(
+    scrobbles_clustered_timebins,
+    r='count',
+    theta='hour',
+    color='cluster_label',
+    color_discrete_sequence=PALETTE,
+)
+polar_hist_scrobble_times.update_layout(
+    polar=dict(
+        angularaxis=dict(
+            type='category',
+            tickvals=list(range(24)),
+            direction='clockwise',
+            rotation=90,
+            period=24  # Forces the circle to represent 24 units
+        )
+    )
+)
+st.plotly_chart(polar_hist_scrobble_times)
+
 
 # show table of top tracks per cluster, this period
 st.write(cluster_similar_tracks_this_month.select(['cluster_label', 'song', 'artist', 'album']))
@@ -714,49 +828,6 @@ fig_bar_timebin = px.bar(
 )
 st.plotly_chart(fig_bar_timebin)
 
-
-scrobbles_clustered_timebins = (
-    pl.LazyFrame({'hour': list(range(24))})
-    .join(pl.LazyFrame({'cluster': list(range(N_CLUSTERS))}), how='cross')
-    .with_columns(pl.lit(0).alias('count'))
-)
-scrobbles_clustered_timebins = (
-    scrobbles_clustered.lazy()
-    .group_by('cluster', pl.col('time').dt.hour().alias('hour'))
-    .len('count')
-    .join(scrobbles_clustered_timebins, on=['hour', 'cluster'], how='right')
-    .join(df_cluster_labels.lazy(), 'cluster', 'left')
-    .with_columns(pl.coalesce('count', 'count_right'))
-    .sort('hour', 'cluster')
-    .collect()
-)
-polar_hist_scrobble_times = px.bar_polar(
-    scrobbles_clustered_timebins,
-    r='count',
-    theta='hour',
-    color='cluster_label',
-    color_discrete_sequence=PALETTE,
-)
-polar_hist_scrobble_times.update_layout(
-    polar=dict(
-        angularaxis=dict(
-            type='category',
-            tickvals=list(range(24)),
-            direction='clockwise',
-            rotation=90,
-            period=24  # Forces the circle to represent 24 units
-        )
-    )
-)
-# polar_hist_scrobble_times = np.histogram(
-#     scrobbles_expanded.select(pl.col('time').dt.hour().alias('hour')).get_column('hour'),
-#     bins=24
-# )
-# polar_hist_scrobble_times = go.Figure(go.Barpolar(
-#     r=polar_hist_scrobble_times[0],
-#     theta=polar_hist_scrobble_times,
-# ))
-st.plotly_chart(polar_hist_scrobble_times)
 
 @st.fragment
 def plot_diversity():
