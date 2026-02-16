@@ -1,5 +1,6 @@
 [runtime]
 log_level = "WARNING"
+http_show_error_body = true
 
 [sources.spotify]
 api_base = "https://api.spotify.com/v1"
