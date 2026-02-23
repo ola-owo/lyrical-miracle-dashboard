@@ -68,13 +68,8 @@ def embed_lyrics() -> bool:
     - if request succeeded, download results and append to `embeddings_list`
     '''
     embeddings_list = [] # list of retrieved embeddings
-    lyrics_requests_parts = (
-        lyrics_requests
-        .with_columns(pl.row_index().floordiv(EMBEDDING_JOB_SIZE).alias('index'))
-        .partition_by('index')
-    )
     gemini_client = genai.Client(api_key=get_keys()['gemini_api_key'])
-    for df in lyrics_requests_parts:
+    for df in lyrics_requests.iter_slices(EMBEDDING_JOB_SIZE):
         job = gemini_client.batches.create_embeddings(
             model='gemini-embedding-001',
             src={'inlined_requests': {

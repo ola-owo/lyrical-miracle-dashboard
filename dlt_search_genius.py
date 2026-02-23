@@ -1,10 +1,11 @@
-'''
+"""
 Search Genius for songs that match our spotify track list
 
 1: read all spotify tracks (from SPOTIFY_TRACKS_FILE)
 2. filter out already-matched songs (from genius.song_matches)
 3. filter out songs already searched (from genius.genius_searches)
-'''
+"""
+
 from pathlib import Path
 import logging
 
@@ -14,7 +15,7 @@ import pyarrow as pa
 from tqdm import tqdm
 import duckdb
 import dlt
-from dlt import source, resource, transformer
+from dlt import transformer
 from dlt.sources.helpers.requests.retry import Client
 
 from lyric_analyzer_base.genius import make_client
@@ -37,11 +38,15 @@ genius = make_client(skip_non_songs=False, excluded_terms=excluded_terms)
 genius_headers = genius._session.headers
 # genius._session = Session(timeout=10)
 # genius._session.headers = genius_headers
-genius._session = Client(request_timeout=10, respect_retry_after_header=True,
-                         session_attrs=dict(headers=genius_headers))
+genius._session = Client(
+    request_timeout=10,
+    respect_retry_after_header=True,
+    session_attrs=dict(headers=genius_headers),
+)
+
 
 def strip_dlt_fields(doc: dict) -> dict:
-    '''Strip auto-generated dlt load fields'''
+    """Strip auto-generated dlt load fields"""
     keys: list[str] = list(doc.keys())
     for k in keys:
         if k.startswith('_dlt_'):
@@ -50,29 +55,26 @@ def strip_dlt_fields(doc: dict) -> dict:
 
 
 def strip_dlt_fields_arrow(tbl: pa.Table) -> dict:
-    '''Strip auto-generated dlt load fields'''
-    return (
-        pl.from_arrow(tbl)
-        .drop(cs.starts_with('_dlt_'))
-        .to_arrow()
-    )
+    """Strip auto-generated dlt load fields"""
+    return pl.from_arrow(tbl).drop(cs.starts_with('_dlt_')).to_arrow()
 
 
 @transformer
 def genius_searches(tracks):
-    '''
+    """
     Search Genius for the given song
 
     Input: spotify track data (dataframe)
-    '''
+    """
+
     def parse_genius_search_res(hits) -> pl.DataFrame:
-        '''
+        """
         Extract song info from genius search results.
         Return a dict, or None if there are no results
 
         Remember to add other genius_search_results fields (song,artist,searchtext)
         after calling this function
-        '''
+        """
         if not hits:
             return None
 
@@ -93,27 +95,25 @@ def genius_searches(tracks):
                 pl.date(
                     pl.col('release_date_components').struct.field('^year$'),
                     pl.col('release_date_components').struct.field('^month$'),
-                    pl.col('release_date_components').struct.field('^day$')
+                    pl.col('release_date_components').struct.field('^day$'),
                 ).alias('release_date'),
                 pl.col('stats').struct.field('^pageviews$'),
                 (pl.col('lyrics_state') == 'complete').alias('lyrics_complete'),
             )
             .select(cs.all().name.prefix('g_'))
         )
-    
+
     # remove old DLT load info
     tracks = pl.from_dicts(tracks).drop(cs.starts_with('_dlt_'))
 
-    tracks = tracks.with_columns(pl.concat_str([
-        normalize_song_titles(pl.col('name')),
-        pl.col('artist')
-    ], separator=' ').alias('searchtext'))
+    tracks = tracks.with_columns(
+        pl.concat_str(
+            [normalize_song_titles(pl.col('name')), pl.col('artist')], separator=' '
+        ).alias('searchtext')
+    )
 
     track_iter = tqdm(
-        tracks.to_dicts(),
-        desc='searching for tracks',
-        leave=False,
-        unit='req'
+        tracks.to_dicts(), desc='searching for tracks', leave=False, unit='req'
     )
     for track in track_iter:
         no_result = {
@@ -157,10 +157,9 @@ pipeline = dlt.pipeline('search_genius', destination=duckdb_dest, dataset_name='
 ## FILTER OUT TRACKS
 # get old searches
 if 'genius_searches' in pipeline.dataset().tables:
-    old_searches = (
-        pl.DataFrame(pipeline.dataset()['genius_searches'][['id']].arrow())
-        .unique(cs.all())
-    )
+    old_searches = pl.DataFrame(
+        pipeline.dataset()['genius_searches'][['id']].arrow()
+    ).unique(cs.all())
     log.info(f'got {old_searches.height} already searched songs')
 else:
     old_searches = pl.DataFrame(schema={'id': pl.String})
@@ -178,18 +177,23 @@ ids_to_skip = pl.concat((old_searches, old_matches)).unique(cs.all())
 print(f'filtering out {ids_to_skip.height} old searches')
 
 # run the pipeline
-for i, tracks_df in enumerate(
+CHUNK_SIZE = 100
+tracks_df_iter = (
     pl.scan_parquet(SPOTIFY_TRACKS_FILE)
     .drop(cs.starts_with('_dlt_'))
     .join(ids_to_skip.lazy(), on='id', how='anti')
-    .collect_batches(chunk_size=50)
+    .collect_batches(CHUNK_SIZE)
+)
+for tracks_df in tqdm(
+    tracks_df_iter,
+    desc=f'batch processing',
+    leave=False,
+    unit='batch',
 ):
-    # print(f'\rloading chunk {i+1}:', end='')
-    print(f'=> loading chunk {i+1}')
     load_info = pipeline.run(
         tracks_df.to_arrow() | genius_searches(),
         table_name='genius_searches',
-        write_disposition='append'
+        write_disposition='append',
     )
 
 # single pipeline run

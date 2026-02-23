@@ -1,7 +1,7 @@
-'''
+"""
 Convert Spotify streaming data dump to Parquet files.
 More info here: https://support.spotify.com/us/article/understanding-your-data/
-'''
+"""
 
 import dlt
 from dlt.sources.filesystem import filesystem
@@ -16,10 +16,12 @@ from typing import Iterator
 SPOTIFY_DATA_DIR = Path('/run/media/ola/T5linux/Data/spotify')
 OUT_DIR = SPOTIFY_DATA_DIR
 
+
 @dlt.transformer
 def read_json(files: Iterator[FileItemDict]) -> Iterator[TDataItems]:
     # import duckdb
     import json
+
     for file_item in files:
         # file_path = file_item.local_file_path
         # print(f'file path: {file_path}')
@@ -29,15 +31,18 @@ def read_json(files: Iterator[FileItemDict]) -> Iterator[TDataItems]:
             yield json.load(f)
 
 
-fs_resource = filesystem(f'file://{SPOTIFY_DATA_DIR}/Spotify_Extended_Streaming_History',
-                         file_glob='Streaming_History_Audio*.json')
+fs_resource = filesystem(
+    f'file://{SPOTIFY_DATA_DIR}/Spotify_Extended_Streaming_History',
+    file_glob='Streaming_History_Audio*.json',
+)
 pipeline = dlt.pipeline('spotify', destination='duckdb')
 load_info = pipeline.run(fs_resource | read_json(), dataset_name='spotify')
 
 # Save all streams
 (
-    pl.LazyFrame(pipeline.dataset().spotify.arrow())
-    .sink_parquet(OUT_DIR / 'Streaming_History_Song.parquet')
+    pl.LazyFrame(pipeline.dataset().spotify.arrow()).sink_parquet(
+        OUT_DIR / 'Streaming_History_Song.parquet'
+    )
 )
 
 # Save song plays
