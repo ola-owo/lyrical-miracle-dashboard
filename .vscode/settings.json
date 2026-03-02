@@ -1,5 +1,14 @@
 {
     "python.analysis.extraPaths": [
         "packages/lyric_analyzer_base"
+    ],
+    "cSpell.words": [
+        "chunksize",
+        "duckdb",
+        "ipython",
+        "lyricsgenius",
+        "networkx",
+        "numpy",
+        "tqdm"
     ]
 }

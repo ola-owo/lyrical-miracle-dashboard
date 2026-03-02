@@ -73,7 +73,7 @@ def get_scrobbles_between(start: int, end: int, limit: int = 1000):
     )
 
 
-def get_image_url(track, artist, mbid=None):
+def get_track_info(track, artist, mbid=None):
     """
     Get an album image url
     

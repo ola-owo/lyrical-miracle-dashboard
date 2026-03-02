@@ -2,6 +2,7 @@
 *.pkl*
 *.duckdb
 *.gz
+apps/dashboard/data/
 
 # API keys
 keys.yml
