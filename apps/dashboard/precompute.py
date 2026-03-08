@@ -76,7 +76,7 @@ def get_df_embeddings_clustered():
     return (
         df_lyrics_embed.lazy()
         .rename({'id': 'g_id'})
-        .with_columns(pl.Series(km.labels_).alias('cluster'))
+        .with_columns(pl.Series('cluster', km.labels_))
         .join(df_centroids.lazy(), on='cluster')
         # EXPERIMENTAL spectral-clustering centroids
         # .with_columns(centroid_dist = pl.col('centroid').sub(pl.Series(spectra)))
@@ -89,7 +89,7 @@ def get_df_embeddings_clustered():
                 return_dtype=pl.Float64,
             )
         )
-        .drop('centroid')
+        .drop('centroid', 'embedding') # dropping embedding/centroid vectors to save space
     )
 
 
@@ -132,10 +132,12 @@ def get_plays_expanded():
         )
         .select(
             'dt',
-            pl.col('spotify_track_uri')
-            .str.split_exact(':', 2)
-            .struct.field('field_2')
-            .alias('id'),
+            (
+                pl.col('spotify_track_uri')
+                .str.split_exact(':', 2)
+                .struct.field('field_2')
+                .alias('id')
+            ),
             pl.col('master_metadata_track_name').alias('song'),
             pl.col('master_metadata_album_album_name').alias('album'),
             pl.col('master_metadata_album_artist_name').alias('artist'),
@@ -154,6 +156,7 @@ def get_plays_expanded():
 def get_plays_clustered():
     return (
         df_lyrics_embed.lazy()
+        .drop('embedding')
         .with_columns(cluster=pl.Series(km.labels_, dtype=pl.Int64))
         .join(df_lyrics.lazy(), on='id', how='inner')
         # merge with genius song metadata
@@ -164,9 +167,9 @@ def get_plays_clustered():
         # group into sessions of at most 1 day between scrobbles
         .sort('dt')
         .with_columns(
-            pl.col('dt').diff().alias('timediff'),
-            pl.col('dt').dt.month().alias('month'),
-            pl.col('dt').dt.year().alias('year'),
+            timediff = pl.col('dt').diff(),
+            month = pl.col('dt').dt.month(),
+            year = pl.col('dt').dt.year(),
         )
     )
 
@@ -184,29 +187,29 @@ plays_clustered.sink_parquet(DATA_DIR / 'plays_clustered.parquet')
 
 df_sessions = (
     plays_clustered.with_columns(
-        pl.col('timediff')
+        session = pl.col('timediff')
         .fill_null(pl.duration())
         .gt(SES_MAX_GAP)
         .cum_sum()
-        .alias('session')
     )
     # add session-level stats
     .with_columns(
         prev_cluster=pl.col('cluster').shift(1).over('session'),
-        latent_dist=(
-            pl.col('embedding') - pl.col('embedding').shift(1).over('session')
-        ),
+        # skipping latent_dist bc there's not much variation there
+        # latent_dist=(
+        #     pl.col('embedding') - pl.col('embedding').shift(1).over('session')
+        # ),
         ses_start=pl.col('dt').min().over('session'),
         ses_end=pl.col('dt').max().over('session'),
         ses_len=pl.len().over('session'),
         n_within_ses=pl.row_index().over('session'),
     )
     .with_columns(
-        pl.col('latent_dist').map_batches(
-            lambda vec: np.linalg.norm(vec, axis=1),
-            returns_scalar=True,
-            return_dtype=pl.Float64,
-        ),
+        # pl.col('latent_dist').map_batches(
+        #     lambda vec: np.linalg.norm(vec, axis=1),
+        #     returns_scalar=True,
+        #     return_dtype=pl.Float64,
+        # ),
         ses_dur=pl.col('ses_end') - pl.col('ses_start'),
     )
     .join(df_cluster_labels.lazy(), 'cluster', 'left')
@@ -226,7 +229,7 @@ df_sessions = (
             'cluster',
             'prev_cluster',
             'cluster_label',
-            'latent_dist',
+            # 'latent_dist',
             'g_id',
             'song',
             'artist',
@@ -248,7 +251,7 @@ def get_cluster_stats(df: pl.DataFrame | pl.LazyFrame):
             top_song_id=pl.col('g_id').mode().first(),
         )
         .sort('cluster')
-        .with_columns((pl.col('n_plays') / pl.col('n_plays').sum()).alias('freq'))
+        .with_columns(freq = (pl.col('n_plays') / pl.col('n_plays').sum()))
         .join(df_centroids.lazy(), on='cluster', how='full', coalesce=True)
         .with_columns(
             pl.col('freq', 'n_plays', 'n_unique_plays', 'n_sessions').replace(None, 0)
@@ -276,7 +279,7 @@ def get_df_stats_all_months():
         .group_by(['year', 'month', 'cluster'])
         .agg(pl.len())
         .with_columns(
-            (pl.col('len') / pl.col('len').sum().over(['year', 'month'])).alias('p')
+            p = pl.col('len') / pl.col('len').sum().over(['year', 'month'])
         )
         .group_by(['year', 'month'])
         .agg(
@@ -290,18 +293,18 @@ def get_df_stats_all_months():
         df_sessions.lazy()
         .group_by(['year', 'month'])
         .agg(
-            pl.len().alias('n_plays'),
+            n_plays = pl.len(),
             n_sessions=pl.col('session').max().add(1),
             ses_len_median=pl.col('ses_len').median(),
             ses_len_max=pl.col('ses_len').max(),
             cluster_mode=pl.col('cluster').mode().first(),
-            # pl.col('freq').get(pl.arg_where(pl.col('cluster') == pl.col('cluster').mode().first()))
-            #     .alias('cluster_mode_freq'),
-            cluster_mode_count=pl.col('cluster')
-            .eq(pl.col('cluster').mode().first())
-            .sum(),
-            latent_dist_mean=pl.col('latent_dist').drop_nans().mean(),
-            latent_dist_med=pl.col('latent_dist').drop_nans().median(),
+            cluster_mode_count=(
+                pl.col('cluster')
+                .eq(pl.col('cluster').mode().first())
+                .sum()
+            ),
+            # latent_dist_mean=pl.col('latent_dist').drop_nans().mean(),
+            # latent_dist_med=pl.col('latent_dist').drop_nans().median(),
         )
         .with_columns(
             pl.date(pl.col('year'), pl.col('month'), 1),

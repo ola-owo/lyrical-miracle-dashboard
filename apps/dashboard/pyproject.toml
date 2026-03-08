@@ -8,6 +8,3 @@ dependencies = [
     "streamlit-agraph>=0.0.45",
     "streamlit[charts]>=1.52.2",
 ]
-
-# [tool.uv.sources]
-# lyric-analyzer-base = { workspace = true, editable = true }
