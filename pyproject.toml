@@ -1,23 +1,17 @@
 [project]
-name = "lyric-analyzer"
+name = "lyrical-miracle-dashboard"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "duckdb>=1.4.3",
-    "lyric_analyzer_base",
     "networkx>=3.6.1",
     "numpy>=2.3.5",
     "pendulum>=3.1.0",
+    "plotly>=6.5.0",
     "polars>=1.36.1",
-    "tqdm>=4.67.1",
+    "streamlit-agraph>=0.0.45",
+    "streamlit[charts]>=1.52.2",
 ]
-
-[tool.uv.sources]
-lyric-analyzer-base = { workspace = true }
-
-[tool.uv.workspace]
-# packages/ is for backend, apps/ is for frontend
-members = ["packages/*", "apps/*"]
 
 [dependency-groups]
 dev = [
