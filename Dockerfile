@@ -4,11 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 COPY . ./
-# COPY .python-version pyproject.toml ./
 RUN uv sync
-# COPY .streamlit/ .streamlit/
-# COPY lyrical-miracle-dashboard/ dashboard/
 
-EXPOSE 8501
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
-ENTRYPOINT ["uv", "run", "streamlit", "run", "dashboard/Home.py", "--server.headless=true", "--server.port=$PORT"]
+HEALTHCHECK CMD curl --fail http://localhost:${PORT}/_stcore/health
+ENTRYPOINT uv run streamlit run lyrical-miracle-dashboard/Home.py --server.headless=true --server.port=$PORT
