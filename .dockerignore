@@ -1,0 +1,9 @@
+# data
+data/
+
+# python libraries
+.venv/
+**/__pycache__/
+
+# docs
+*.md

@@ -4,9 +4,6 @@
 *.gz
 data/
 
-# API keys
-keys.yml
-
 # Gitignore template below copied from:
 # https://github.com/github/gitignore/blob/main/Python.gitignore
 

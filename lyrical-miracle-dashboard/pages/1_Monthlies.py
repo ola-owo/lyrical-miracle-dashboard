@@ -155,8 +155,8 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
         .drop(cs.ends_with('_right'))
         .join(
             df_cluster_stats.lazy().select('cluster', 'cluster_label'),
-            'cluster',
-            'left',
+            on='cluster',
+            how='left',
         )
         .sort('cluster', 'centroid_dist')
         .rename({'g_id': 'id', 'id': 'spotify_id'})
@@ -171,8 +171,8 @@ cluster_similar_tracks_this_month = get_cluster_examples(st.session_state.select
 @st.cache_data
 def get_album_art(cluster_similar_tracks_this_month: pl.DataFrame) -> dict[int, str]:
     """
-    get album art metadata,
-    return dict[]
+    get album art urls,
+    return dictionary of g_id->url
     """
     image_meta = (
         cluster_similar_tracks_this_month.lazy()

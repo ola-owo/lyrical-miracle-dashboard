@@ -75,7 +75,6 @@ def db_read_table(tbl: str):
 
 
 def db_read_query(q: str):
-    print('RUNNING QUERY:', q)
     return pl.read_database_uri(q, st.secrets['connections']['neon']['url'])
 
 
