@@ -16,9 +16,12 @@ from common import (
     PALETTE,
     BIG5_TRAITS_SHORT,
     make_df_cluster_labels,
-    duckdb_read_table_cached,
+    db_read_query,
+    timeout_popup,
 )
 
+
+timeout_popup()
 st.set_page_config(page_title='Your Monthly Music Breakdown', page_icon='📅')
 st.header('Your Monthly Music Breakdown')
 st.sidebar.header('Your Monthly Music Breakdown')
@@ -27,8 +30,6 @@ st.sidebar.header('Your Monthly Music Breakdown')
 ###
 ### Read data
 ###
-
-df_genius = duckdb_read_table_cached('genius.song_matches').lazy()
 
 df_sessions = pl.scan_parquet(DATA_DIR / 'df_sessions.parquet')
 df_embeddings_clustered = pl.scan_parquet(DATA_DIR / 'df_embeddings_clustered.parquet')
@@ -131,12 +132,25 @@ cluster_stats_this_period = get_cluster_stats(
 
 @st.cache_data
 def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
-    df_sessions_this_month = filter_df_by_month(df_sessions, date)
-    return (
+    # get intermediate df with ids of songs to query from db
+    df = (
         df_embeddings_clustered.lazy()
         .filter(pl.col('centroid_dist').rank('dense').over('cluster') <= 3)
-        .join(df_sessions_this_month.lazy(), on='g_id')
-        .join(df_genius.lazy(), on='g_id')
+        .join(filter_df_by_month(df_sessions, date), on='g_id')
+        .collect()
+    )
+    # get song ids from db
+    g_ids_to_query = df['g_id'].unique()
+    if g_ids_to_query.is_empty():
+        genius_song_matches = pl.DataFrame(schema={'id': pl.String, 'g_id': pl.Int32})
+    else:
+        g_ids_to_query_str = '(' + ','.join(g_ids_to_query.cast(str)) + ')'
+        g_ids_query = 'SELECT id, g_id FROM "genius"."song_matches" WHERE g_id in ' + g_ids_to_query_str
+        genius_song_matches = db_read_query(g_ids_query)
+
+    return (
+        df.lazy()
+        .join(genius_song_matches.lazy(), on='g_id')
         .unique(['cluster', 'g_id'])
         .drop(cs.ends_with('_right'))
         .join(
@@ -147,7 +161,8 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
         .sort('cluster', 'centroid_dist')
         .rename({'g_id': 'id', 'id': 'spotify_id'})
         .drop([cs.starts_with('g_'), 'timediff'])
-    ).collect()
+        .collect()
+    )
 
 
 cluster_similar_tracks_this_month = get_cluster_examples(st.session_state.selected_date)

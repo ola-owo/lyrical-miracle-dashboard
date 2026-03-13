@@ -3,12 +3,18 @@ name = "lyrical-miracle-dashboard"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "connectorx>=0.4.5",
     "duckdb>=1.4.3",
     "networkx>=3.6.1",
     "numpy>=2.3.5",
     "pendulum>=3.1.0",
     "plotly>=6.5.0",
     "polars>=1.36.1",
+    "psycopg-binary>=3.3.3",
+    "requests>=2.32.5",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "sqlalchemy>=2.0.48",
     "streamlit-agraph>=0.0.45",
     "streamlit[charts]>=1.52.2",
 ]

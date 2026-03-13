@@ -1,13 +1,12 @@
 from string import ascii_uppercase as ALPHABET
 from pathlib import Path
 
-import duckdb
 import plotly
 import polars as pl
-import polars.selectors as cs
 import streamlit as st
+import streamlit.components.v1 as components
 
-from lyric_analyzer_base.database import DUCKDB_FILE
+from connection import DuckDBConnection
 
 
 ###
@@ -15,7 +14,7 @@ from lyric_analyzer_base.database import DUCKDB_FILE
 ###
 
 # data
-DATA_DIR = Path('apps/dashboard/data/')
+DATA_DIR = Path('data/')
 
 # plotting
 PALETTE = plotly.colors.qualitative.D3
@@ -24,8 +23,15 @@ PALETTE = plotly.colors.qualitative.D3
 TIME_ZONE = 'US/Eastern'  # for converting scrobbles timestamps from UTC
 
 # clustering
+N_CLUSTERS = 7
 RANDOM_SEED = 1738
-KMEANS_FILE = 'apps/dashboard/data/kmeans.pkl.gz'
+KMEANS_FILE = DATA_DIR / 'kmeans.pkl.gz'
+
+# embeddings
+EMBEDDING_DIM = 768
+
+# session binning
+SES_MAX_GAP = pl.duration(days=1) # max gap between consecutive songs in a session
 
 # time-of-day binning
 TIME_BIN_BOUNDARIES = (6, 12, 18)
@@ -63,20 +69,24 @@ BIG5_TRAITS_NEG = (
 
 
 # data
-@st.cache_data
-def duckdb_read_table_cached(tbl):
-    with duckdb.connect(DUCKDB_FILE, read_only=True) as cxn:
-        return cxn.table(tbl).pl()
+def db_read_table(tbl: str):
+    tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
+    return pl.read_database_uri(f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url'])
 
 
-# stats
-def get_quantile(df: pl.DataFrame, i: int) -> pl.DataFrame:
-    """
-    Find the quantiles of each column of row `i` of dataframe `df`.
+def db_read_query(q: str):
+    print('RUNNING QUERY:', q)
+    return pl.read_database_uri(q, st.secrets['connections']['neon']['url'])
 
-    All dtypes of `df` must be numeric/comparable
-    """
-    return df.select(cs.all().get(i).ge(cs.all()).mean())
+
+def duckdb_read_table(tbl: str):
+    cxn = st.connection('duckdb', type=DuckDBConnection, database=st.secrets['connections']['duckdb']['database'])
+    return cxn.table(tbl)
+
+
+def duckdb_read_query(q: str):
+    cxn = st.connection('duckdb', type=DuckDBConnection, database=st.secrets['connections']['duckdb']['database'])
+    return cxn.query(q)
 
 
 # clustering
@@ -86,4 +96,39 @@ def make_df_cluster_labels(n_clusters):
             'cluster': range(n_clusters),
             'cluster_label': [ALPHABET[i] for i in range(n_clusters)],
         }
+    )
+
+
+def timeout_popup(timeout_ms: int = 1_800_000):
+    """
+    When inactive, show an "are you still there?" popup which blocks the thread,
+    allowing the app to spin down to zero.
+    Without this the app stays alive indefinitely due to periodic health checks
+
+    source: discuss.streamlit.io/t/streamlit-app-deployment-expensive-on-cloud-run/65337/10
+    """
+    components.html(
+        """
+        <script>
+        (function () {
+        const ctx = window.top || window;           // Prefer the top window so the alert blocks the main tab
+        if (ctx.__sessionTimeoutStarted) return;    // Guard against multiple initializations
+        ctx.__sessionTimeoutStarted = true;
+
+        function scheduleNext() {
+            ctx.__sessionTimeoutTimer = ctx.setTimeout(() => {
+            try { ctx.alert("Are you still using this app?"); }
+            finally {
+                // Schedule the next run only after the alert is dismissed (ensures at most one pending timer)
+                scheduleNext();
+            }
+            }, %d);
+        }
+
+        // Kick off the first run
+        scheduleNext();
+        })();
+        </script>
+        """ % timeout_ms,
+        height=0,
     )

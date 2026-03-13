@@ -1,8 +1,9 @@
 "Get album art"
 
 import streamlit as st
-from lyric_analyzer_base.database import duckdb_query
-from lyric_analyzer_base.lastfm import get_track_info
+
+from common import db_read_query
+from lastfm import get_track_info
 
 
 @st.cache_data
@@ -17,11 +18,14 @@ def get_lastfm_img(artist, song, mbid=None) -> str | None:
 
 
 @st.cache_data
-def get_genius_img(g_id) -> str | None:
-    q = 'SELECT song_art_image_thumbnail_url FROM "genius"."songs" WHERE id = ? LIMIT 1'
-    params = [g_id]
+def get_genius_img(g_id: int) -> str | None:
+    # TODO: sanitize this
+    q = f'SELECT song_art_image_thumbnail_url FROM "genius"."songs" WHERE id = {g_id} LIMIT 1'
+    g = db_read_query(q)
+    # q = 'SELECT song_art_image_thumbnail_url FROM "genius"."songs" WHERE id = ? LIMIT 1'
+    # params = [g_id]
+    # g = db_read_query(q, params)
 
-    g = duckdb_query(q, params, read_only=True)
     if g.is_empty():
         return None
 

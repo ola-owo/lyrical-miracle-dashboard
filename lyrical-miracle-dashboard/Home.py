@@ -1,13 +1,18 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
+from common import timeout_popup
+
+
+timeout_popup()
 st.set_page_config(
     page_title='The Lyrical Miracle',
-    page_icon='👋',
+    page_icon='🔊',
 )
 
 st.title('The Lyrical Miracle')
 st.subheader('_Your music listening history, with AI powered lyrical analysis_')
-st.sidebar.success('Click here!')
+st.sidebar.success('Over here!')
 
 
 BODY_TEXT = """

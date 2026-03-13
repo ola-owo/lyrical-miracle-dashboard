@@ -7,8 +7,10 @@ from common import (
     PALETTE,
     TIME_BIN_PALETTE,
     make_df_cluster_labels,
+    timeout_popup,
 )
 
+timeout_popup()
 st.set_page_config(page_title='Timelines', page_icon='📈')
 st.header('Your Listening History')
 st.sidebar.header('Your Listening History')
@@ -142,8 +144,9 @@ def plot_song_latent_distance(df_stats_all_months):
     st.plotly_chart(fig_bar_timebin)
 
 
-st.header(
-    'Embedding distance',
-    help='Average latent-space distance between consecutive songs in a session',
-)
-plot_song_latent_distance(df_stats_all_months)
+# LATENT DISTANCE DISABLED FOR NOW
+# st.header(
+#     'Embedding distance',
+#     help='Average latent-space distance between consecutive songs in a session',
+# )
+# plot_song_latent_distance(df_stats_all_months)
