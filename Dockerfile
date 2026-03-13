@@ -3,10 +3,11 @@ FROM python:3.13-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
-COPY .python-version pyproject.toml .
+COPY . ./
+# COPY .python-version pyproject.toml ./
 RUN uv sync
-COPY .streamlit/ .streamlit/
-COPY lyrical-miracle-dashboard/ dashboard/
+# COPY .streamlit/ .streamlit/
+# COPY lyrical-miracle-dashboard/ dashboard/
 
 EXPOSE 8501
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
