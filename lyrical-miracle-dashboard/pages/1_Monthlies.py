@@ -145,7 +145,10 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
         genius_song_matches = pl.DataFrame(schema={'id': pl.String, 'g_id': pl.Int32})
     else:
         g_ids_to_query_str = '(' + ','.join(g_ids_to_query.cast(str)) + ')'
-        g_ids_query = 'SELECT id, g_id FROM "genius"."song_matches" WHERE g_id in ' + g_ids_to_query_str
+        g_ids_query = (
+            'SELECT id, g_id FROM "genius"."song_matches" WHERE g_id in '
+            + g_ids_to_query_str
+        )
         genius_song_matches = db_read_query(g_ids_query)
 
     return (

@@ -36,10 +36,12 @@ DATA_DIR.mkdir(exist_ok=True)
 ###
 df_plays = db_read_table('spotify.streams')
 df_lyrics = db_read_table('genius.lyrics')
-df_lyrics_embed = db_read_table('genius.lyrics_embed') \
-    .with_columns(pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM)))
-df_lyrics_big5 = db_read_table('genius.lyrics_big5') \
-    .with_columns(pl.col('outputs').cast(pl.Array(pl.Float64, 5)))
+df_lyrics_embed = db_read_table('genius.lyrics_embed').with_columns(
+    pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM))
+)
+df_lyrics_big5 = db_read_table('genius.lyrics_big5').with_columns(
+    pl.col('outputs').cast(pl.Array(pl.Float64, 5))
+)
 df_genius = db_read_table('genius.song_matches')
 
 
@@ -77,7 +79,7 @@ df_embeddings_clustered: pl.LazyFrame = (
             return_dtype=pl.Float64,
         )
     )
-    .drop('centroid', 'embedding') # dropping embedding/centroid vectors to save space
+    .drop('centroid', 'embedding')  # dropping embedding/centroid vectors to save space
 )
 
 df_embeddings_clustered.sink_parquet(DATA_DIR / 'df_embeddings_clustered.parquet')
@@ -151,9 +153,9 @@ plays_clustered: pl.LazyFrame = (
     # group into sessions of at most 1 day between scrobbles
     .sort('dt')
     .with_columns(
-        timediff = pl.col('dt').diff(),
-        month = pl.col('dt').dt.month(),
-        year = pl.col('dt').dt.year(),
+        timediff=pl.col('dt').diff(),
+        month=pl.col('dt').dt.month(),
+        year=pl.col('dt').dt.year(),
     )
 )
 
@@ -169,10 +171,7 @@ plays_clustered.sink_parquet(DATA_DIR / 'plays_clustered.parquet')
 
 df_sessions = (
     plays_clustered.with_columns(
-        session = pl.col('timediff')
-        .fill_null(pl.duration())
-        .gt(SES_MAX_GAP)
-        .cum_sum()
+        session=pl.col('timediff').fill_null(pl.duration()).gt(SES_MAX_GAP).cum_sum()
     )
     # add session-level stats
     .with_columns(
@@ -231,7 +230,7 @@ df_cluster_stats = (
         top_song_id=pl.col('g_id').mode().first(),
     )
     .sort('cluster')
-    .with_columns(freq = (pl.col('n_plays') / pl.col('n_plays').sum()))
+    .with_columns(freq=(pl.col('n_plays') / pl.col('n_plays').sum()))
     .join(df_centroids.lazy(), on='cluster', how='full', coalesce=True)
     .with_columns(
         pl.col('freq', 'n_plays', 'n_unique_plays', 'n_sessions').replace(None, 0)
@@ -254,9 +253,7 @@ _df_session_group_agg = (
     df_sessions.lazy()
     .group_by(['year', 'month', 'cluster'])
     .agg(pl.len())
-    .with_columns(
-        p = pl.col('len') / pl.col('len').sum().over(['year', 'month'])
-    )
+    .with_columns(p=pl.col('len') / pl.col('len').sum().over(['year', 'month']))
     .group_by(['year', 'month'])
     .agg(
         gini=1.0 - pl.col('p').pow(2).sum(),
@@ -268,15 +265,13 @@ df_stats_all_months = (
     df_sessions.lazy()
     .group_by(['year', 'month'])
     .agg(
-        n_plays = pl.len(),
+        n_plays=pl.len(),
         n_sessions=pl.col('session').max().add(1),
         ses_len_median=pl.col('ses_len').median(),
         ses_len_max=pl.col('ses_len').max(),
         cluster_mode=pl.col('cluster').mode().first(),
         cluster_mode_count=(
-            pl.col('cluster')
-            .eq(pl.col('cluster').mode().first())
-            .sum()
+            pl.col('cluster').eq(pl.col('cluster').mode().first()).sum()
         ),
         # latent_dist_mean=pl.col('latent_dist').drop_nans().mean(),
         # latent_dist_med=pl.col('latent_dist').drop_nans().median(),
@@ -290,16 +285,25 @@ df_stats_all_months = (
 )
 
 df_cluster_per_month = (
-    plays_clustered
-    .group_by(['year', 'month', 'cluster'])
+    plays_clustered.group_by(['year', 'month', 'cluster'])
     .agg(pl.len().alias('n_cluster_plays'))
     .join(df_stats_all_months.lazy(), on=['year', 'month'])
     .join(df_cluster_labels.lazy(), on='cluster')
     .with_columns(
         pl.date(pl.col('year'), pl.col('month'), 1).alias('date'),
         pl.col('n_cluster_plays').truediv(pl.col('n_plays')).alias('cluster_freq'),
-        )
-    .select(['year', 'month', 'date', 'cluster', 'cluster_label', 'n_cluster_plays', 'cluster_freq'])
+    )
+    .select(
+        [
+            'year',
+            'month',
+            'date',
+            'cluster',
+            'cluster_label',
+            'n_cluster_plays',
+            'cluster_freq',
+        ]
+    )
     .sort(['year', 'month', 'cluster'])
 )
 

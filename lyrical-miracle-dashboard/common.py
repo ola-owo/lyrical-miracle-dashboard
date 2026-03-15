@@ -31,7 +31,7 @@ KMEANS_FILE = DATA_DIR / 'kmeans.pkl.gz'
 EMBEDDING_DIM = 768
 
 # session binning
-SES_MAX_GAP = pl.duration(days=1) # max gap between consecutive songs in a session
+SES_MAX_GAP = pl.duration(days=1)  # max gap between consecutive songs in a session
 
 # time-of-day binning
 TIME_BIN_BOUNDARIES = (6, 12, 18)
@@ -71,7 +71,9 @@ BIG5_TRAITS_NEG = (
 # data
 def db_read_table(tbl: str):
     tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
-    return pl.read_database_uri(f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url'])
+    return pl.read_database_uri(
+        f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url']
+    )
 
 
 def db_read_query(q: str):
@@ -79,12 +81,20 @@ def db_read_query(q: str):
 
 
 def duckdb_read_table(tbl: str):
-    cxn = st.connection('duckdb', type=DuckDBConnection, database=st.secrets['connections']['duckdb']['database'])
+    cxn = st.connection(
+        'duckdb',
+        type=DuckDBConnection,
+        database=st.secrets['connections']['duckdb']['database'],
+    )
     return cxn.table(tbl)
 
 
 def duckdb_read_query(q: str):
-    cxn = st.connection('duckdb', type=DuckDBConnection, database=st.secrets['connections']['duckdb']['database'])
+    cxn = st.connection(
+        'duckdb',
+        type=DuckDBConnection,
+        database=st.secrets['connections']['duckdb']['database'],
+    )
     return cxn.query(q)
 
 
@@ -128,6 +138,7 @@ def timeout_popup(timeout_ms: int = 1_800_000):
         scheduleNext();
         })();
         </script>
-        """ % timeout_ms,
+        """
+        % timeout_ms,
         height=0,
     )
