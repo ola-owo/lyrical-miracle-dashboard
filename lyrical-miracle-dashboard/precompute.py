@@ -11,6 +11,7 @@ import polars.selectors as cs
 import networkx as nx
 
 from clustering import run_kmeans
+from database import db_read_table
 from common import (
     TIME_ZONE,
     RANDOM_SEED,
@@ -25,7 +26,6 @@ from common import (
     SES_MAX_GAP,
     N_CLUSTERS,
     EMBEDDING_DIM,
-    db_read_table,
     make_df_cluster_labels,
 )
 
@@ -48,9 +48,15 @@ df_genius = db_read_table('genius.song_matches')
 ###
 ### Clustering
 ###
+(
+    df_lyrics_embed.lazy()
+    .select('id', 'embedding')
+    .cast(pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM)))
+    .sink_parquet(DATA_DIR / 'lyrics_embed.parquet')
+)
+
 print('running kmeans...')
 km = run_kmeans(df_lyrics_embed['embedding'], N_CLUSTERS, RANDOM_SEED)
-# km, spectra = run_spectral_clustering = run_spectral_clustering(df_lyrics_embed['embedding'], N_CLUSTERS, RANDOM_SEED)
 
 with gzip.open(KMEANS_FILE, 'wb') as f:
     pickle.dump(km, f)

@@ -11,12 +11,12 @@ import plotly.graph_objects as go
 
 from graphs import plot_network_agraph
 from albumart import get_genius_img, get_lastfm_img
+from database import db_read_query
 from common import (
     DATA_DIR,
     PALETTE,
     BIG5_TRAITS_SHORT,
     make_df_cluster_labels,
-    db_read_query,
     timeout_popup,
 )
 
@@ -24,7 +24,7 @@ from common import (
 timeout_popup()
 st.set_page_config(page_title='Your Monthly Music Breakdown', page_icon='📅')
 st.header('Your Monthly Music Breakdown')
-st.sidebar.header('Your Monthly Music Breakdown')
+st.sidebar.header('The Lyrical Miracle')
 
 
 ###

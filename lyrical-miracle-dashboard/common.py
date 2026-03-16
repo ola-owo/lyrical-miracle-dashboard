@@ -3,10 +3,7 @@ from pathlib import Path
 
 import plotly
 import polars as pl
-import streamlit as st
 import streamlit.components.v1 as components
-
-from connection import DuckDBConnection
 
 
 ###
@@ -66,39 +63,6 @@ BIG5_TRAITS_NEG = (
 ###
 ### Helper functions
 ###
-
-
-# data
-def db_read_table(tbl: str):
-    tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
-    return pl.read_database_uri(
-        f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url']
-    )
-
-
-def db_read_query(q: str):
-    return pl.read_database_uri(q, st.secrets['connections']['neon']['url'])
-
-
-def duckdb_read_table(tbl: str):
-    cxn = st.connection(
-        'duckdb',
-        type=DuckDBConnection,
-        database=st.secrets['connections']['duckdb']['database'],
-    )
-    return cxn.table(tbl)
-
-
-def duckdb_read_query(q: str):
-    cxn = st.connection(
-        'duckdb',
-        type=DuckDBConnection,
-        database=st.secrets['connections']['duckdb']['database'],
-    )
-    return cxn.query(q)
-
-
-# clustering
 def make_df_cluster_labels(n_clusters):
     return pl.DataFrame(
         {
@@ -126,7 +90,7 @@ def timeout_popup(timeout_ms: int = 1_800_000):
 
         function scheduleNext() {
             ctx.__sessionTimeoutTimer = ctx.setTimeout(() => {
-            try { ctx.alert("Are you still using this app?"); }
+            try { ctx.alert("Are you still there?"); }
             finally {
                 // Schedule the next run only after the alert is dismissed (ensures at most one pending timer)
                 scheduleNext();

@@ -8,6 +8,36 @@ from streamlit.runtime.caching import cache_data
 
 import duckdb
 import polars as pl
+import streamlit as st
+
+
+def db_read_table(tbl: str):
+    tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
+    return pl.read_database_uri(
+        f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url']
+    )
+
+
+def db_read_query(q: str):
+    return pl.read_database_uri(q, st.secrets['connections']['neon']['url'])
+
+
+def duckdb_read_table(tbl: str):
+    cxn = st.connection(
+        'duckdb',
+        type=DuckDBConnection,
+        database=st.secrets['connections']['duckdb']['database'],
+    )
+    return cxn.table(tbl)
+
+
+def duckdb_read_query(q: str):
+    cxn = st.connection(
+        'duckdb',
+        type=DuckDBConnection,
+        database=st.secrets['connections']['duckdb']['database'],
+    )
+    return cxn.query(q)
 
 
 class DuckDBConnection(ExperimentalBaseConnection[duckdb.DuckDBPyConnection]):

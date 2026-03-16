@@ -5,6 +5,8 @@ requires-python = ">=3.13"
 dependencies = [
     "connectorx>=0.4.5",
     "duckdb>=1.4.3",
+    "faiss-cpu>=1.13.2",
+    "google-genai>=1.67.0",
     "networkx>=3.6.1",
     "numpy>=2.3.5",
     "pendulum>=3.1.0",
@@ -21,6 +23,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.2.0",
     "ipython>=9.8.0",
     "ruff>=0.14.10",
 ]

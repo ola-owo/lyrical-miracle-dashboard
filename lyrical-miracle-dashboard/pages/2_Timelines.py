@@ -13,7 +13,7 @@ from common import (
 timeout_popup()
 st.set_page_config(page_title='Timelines', page_icon='📈')
 st.header('Your Listening History')
-st.sidebar.header('Your Listening History')
+st.sidebar.header('The Lyrical Miracle')
 
 
 plays_clustered = pl.scan_parquet(DATA_DIR / 'plays_clustered.parquet')

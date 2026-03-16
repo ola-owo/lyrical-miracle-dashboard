@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from common import db_read_query
+from database import db_read_query
 from lastfm import get_track_info
 
 

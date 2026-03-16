@@ -11,7 +11,7 @@ st.set_page_config(
 
 st.title('The Lyrical Miracle')
 st.subheader('_Your music listening history, with AI powered lyrical analysis_')
-st.sidebar.success('Over here!')
+st.sidebar.success('Check out one of these pages!')
 
 
 BODY_TEXT = """
