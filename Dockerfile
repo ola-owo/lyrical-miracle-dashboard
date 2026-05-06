@@ -1,16 +1,16 @@
 # base image: python 3.13 with uv
 # https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
-FROM python:3.13-slim
+FROM python:3.14-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
 # 1st sync install dependencies only
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync -n --locked --no-dev --no-install-project
 # 2nd sync installs the project itself
 COPY . ./
-RUN uv sync --frozen
+RUN uv sync -n --locked --no-dev
 
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENTRYPOINT ["sh", "-c", \
