@@ -9,10 +9,10 @@ import polars.selectors as cs
 import plotly.express as px
 import plotly.graph_objects as go
 
-from graphs import plot_network_agraph
-from albumart import get_genius_img, get_lastfm_img
-from database import db_read_query
-from common import (
+from dashboard.graphs import plot_network_agraph
+from dashboard.albumart import get_genius_img, get_lastfm_img
+from dashboard.database import db_read_query
+from dashboard.common import (
     DATA_DIR,
     PALETTE,
     BIG5_TRAITS_SHORT,

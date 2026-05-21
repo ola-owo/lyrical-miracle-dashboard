@@ -8,6 +8,7 @@ from streamlit.runtime.caching import cache_data
 
 import duckdb
 import polars as pl
+from polars import selectors as cs
 import streamlit as st
 
 
@@ -15,7 +16,7 @@ def db_read_table(tbl: str):
     tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
     return pl.read_database_uri(
         f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url']
-    )
+    ).drop(cs.starts_with('_dlt_'))
 
 
 def db_read_query(q: str):

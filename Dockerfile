@@ -14,5 +14,5 @@ RUN uv sync -n --locked --no-dev
 
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENTRYPOINT ["sh", "-c", \
-    "exec uv run streamlit run lyrical-miracle-dashboard/Home.py \
+    "exec uv run streamlit run pages/Home.py \
     --server.port=$PORT \"${@}\"", "--"]

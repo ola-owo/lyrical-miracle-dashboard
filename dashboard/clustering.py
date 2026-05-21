@@ -2,18 +2,15 @@
 
 import numpy as np
 from scipy import sparse
-import streamlit as st
 from sklearn.cluster import KMeans
 
 RANDOM_SEED = 1738
 
 
-@st.cache_data
 def run_kmeans(embeddings, n_clusters, random_seed=RANDOM_SEED):
     return KMeans(n_clusters, random_state=random_seed).fit(embeddings)
 
 
-@st.cache_data
 def run_spectral_clustering(embeddings, n_clusters, random_seed=RANDOM_SEED):
     """
     (EXPERIMENTAL) Run spectral clustering.

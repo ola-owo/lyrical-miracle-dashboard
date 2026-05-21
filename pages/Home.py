@@ -1,6 +1,6 @@
 import streamlit as st
 
-from common import timeout_popup
+from dashboard.common import timeout_popup
 
 
 timeout_popup()

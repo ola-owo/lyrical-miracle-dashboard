@@ -1,5 +1,18 @@
 """
 Precompute and save data for the dashboard
+
+Files saved:
+    lyrics_embed: song ids and lyric-embeddings
+    kmeans: embedding cluster assignments centroids
+    df_embeddings_clustered: song ids and their assigned cluster
+    plays_expanded: song plays table with extra computed cols
+    plays_clustered: plays_expanded with cluster assignments
+    df_sessions: session-level aggregates
+    df_stats_all_months: month-level session aggregates
+    df_cluster_stats: cluster-level aggregates
+    df_cluster_per_month: cluster/month level aggregates
+    ses_graph_full: cluster graph spanning the entire timespan
+    big5: month-level average big5 scores
 """
 
 import pickle
@@ -10,9 +23,9 @@ import polars as pl
 import polars.selectors as cs
 import networkx as nx
 
-from clustering import run_kmeans
-from database import db_read_table
-from common import (
+from dashboard.clustering import run_kmeans
+from dashboard.database import db_read_table
+from dashboard.common import (
     TIME_ZONE,
     RANDOM_SEED,
     DATA_DIR,
@@ -36,10 +49,10 @@ DATA_DIR.mkdir(exist_ok=True)
 ###
 df_plays = db_read_table('spotify.streams')
 df_lyrics = db_read_table('genius.lyrics')
-df_lyrics_embed = db_read_table('genius.lyrics_embed').with_columns(
+df_lyrics_embed = db_read_table('genius.lyrics_embed_v1').with_columns(
     pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM))
 )
-df_lyrics_big5 = db_read_table('genius.lyrics_big5').with_columns(
+df_lyrics_big5 = db_read_table('genius.lyrics_big5_v1').with_columns(
     pl.col('outputs').cast(pl.Array(pl.Float64, 5))
 )
 df_genius = db_read_table('genius.song_matches')
@@ -51,7 +64,7 @@ df_genius = db_read_table('genius.song_matches')
 (
     df_lyrics_embed.lazy()
     .select('id', 'embedding')
-    .cast(pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM)))
+    .with_columns(pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM)))
     .sink_parquet(DATA_DIR / 'lyrics_embed.parquet')
 )
 

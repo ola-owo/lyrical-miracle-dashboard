@@ -2,7 +2,7 @@ import streamlit as st
 import polars as pl
 import plotly.express as px
 
-from common import (
+from dashboard.common import (
     DATA_DIR,
     PALETTE,
     TIME_BIN_PALETTE,
