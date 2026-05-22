@@ -6,13 +6,14 @@ from google.genai import types
 import faiss
 
 from database import db_read_query
-from common import DATA_DIR, EMBEDDING_DIM
+from common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
 
 
 ###
 ### Get lyrics embeddings and build index
 ###
-df_lyrics_embed = pl.scan_parquet(DATA_DIR / 'lyrics_embed.parquet')
+def get_lyrics_embed():
+    return pl.scan_parquet(SEARCH_VECTORS_PATH).cast(pl.Array(pl.Float32, EMBEDDING_DIM))
 
 
 @st.cache_resource
@@ -23,9 +24,9 @@ def make_index():
     (for now) Use the flat inner-product index with genius ID mappings.
     This is best for smallish ( < 1M) datasets with few searches
     """
+    df_lyrics_embed = get_lyrics_embed()
     emb_mat = (
         df_lyrics_embed.select('embedding')
-        .cast(pl.Array(pl.Float32, EMBEDDING_DIM))
         .collect()
         .to_series()
         .to_numpy()
@@ -46,23 +47,33 @@ def make_client() -> genai.Client:
 ### Run search
 ###
 @st.cache_data
-def _embed_text(
-    text: str | list[str], model: str = 'gemini-embedding-001', dim: int = 768
+def _embed_query(
+    text: str | list[str], task: str = 'search result', dim: int = EMBEDDING_DIM
 ) -> np.typing.NDArray:
     """
-    Embed one or more texts using gemini
+    Embed one or more texts using `gemini-embedding-2`
+    By default, use the "search result" task type.
 
     :param text: text(s) to embed
-    :param client: Gemini API client
-    :param model: embedding model name
+    :param task: embedding task type,
+        see [here](https://ai.google.dev/gemini-api/docs/embeddings#task-types-embeddings-2)
     :param dim: embedding vector dimensionality
     :return: Text embeddings
     :rtype: Numpy 2D array
     """
+    GEMINI_MODEL = 'gemini-embedding-2'
+
+    def build_prompt(text: str):
+        text = text.replace('|', '')
+        return f'task: {task} | query: {text}'
+
+    if isinstance(text, str):
+        text = [text]
+
     client = make_client()  # cached
     res = client.models.embed_content(
-        model=model,
-        contents=text,
+        model=GEMINI_MODEL,
+        contents=[build_prompt(t) for t in text],
         config=types.EmbedContentConfig(output_dimensionality=dim),
     )
     emb = np.array([e.values for e in res.embeddings])
@@ -98,17 +109,18 @@ def _vector_search(
 
 
 @st.cache_data
-def text_search(search_texts: str | list[str], n: int):
+def text_search(search_texts: str | list[str], n_results: int = 5):
     """
     Search the index for one or more texts
 
     :param search_texts: Text(s) to search for
-    :param n: Number of search results
+    :param n_results: Number of search results
     :return: DataFrame with ranked results and similarity scores
     :rtype: DataFrame
     """
-    search_vecs = _embed_text(search_texts, dim=EMBEDDING_DIM)
-    search_res = _vector_search(search_vecs, 5)
+    df_lyrics_embed = get_lyrics_embed()
+    search_vecs = _embed_query(search_texts)
+    search_res = _vector_search(search_vecs, n_results)
     search_df = pl.LazyFrame({'search': search_texts}).with_row_index('search_num')
     return (
         search_res.lazy()
@@ -121,6 +133,12 @@ def text_search(search_texts: str | list[str], n: int):
 
 @st.cache_data
 def transform_search_res(search_res: pl.DataFrame):
+    """
+    Transform search results by pulling extra genius song info
+
+    Args:
+        search_res: search results from `text_search()`
+    """
     output_schema = pl.DataFrame(
         schema={
             'song': str,
@@ -133,25 +151,16 @@ def transform_search_res(search_res: pl.DataFrame):
     if search_res.is_empty():
         return output_schema
     search_res = search_res.unique('id')
-    g_ids_str = '(' + ','.join(search_res['id'].cast(str)) + ')'
-
-    # get spotify song info
-    # query = '\n'.join((
-    #     f'WITH ids as (SELECT id FROM "genius"."song_matches" WHERE g_id in {g_ids_str})',
-    #     'SELECT t.name song, t.artist, a.name album, a.release_date, t.external_urls__spotify url',
-    #     'FROM ids INNER JOIN "spotify"."tracks" t USING (id) LEFT JOIN "spotify"."albums" a ON (t.album_id = a.id)',
-    # ))
-
-    # get genius song info
+    ids_str = '(' + ','.join(search_res['id'].cast(str)) + ')'
     query = f"""
-    WITH ids as (SELECT g_id AS id FROM "genius"."song_matches"
-        WHERE g_id in {g_ids_str})
-    SELECT g.title song
-        , g.primary_artist_names artist
-        , g.album__name album
-        , g.album__release_date_for_display release_date
-        , g.url
-    FROM ids INNER JOIN "genius"."songs" g USING (id)
+    SELECT id
+        , title song
+        , primary_artist_names artist
+        , album__name album
+        , album__release_date_for_display release_date
+        , url
+    FROM "genius"."songs"
+    WHERE id in {ids_str}
     """
 
     return db_read_query(query)

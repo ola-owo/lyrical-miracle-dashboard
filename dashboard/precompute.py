@@ -39,6 +39,8 @@ from dashboard.common import (
     SES_MAX_GAP,
     N_CLUSTERS,
     EMBEDDING_DIM,
+    CLUSTER_VECTORS_PATH,
+    SEARCH_VECTORS_PATH,
     make_df_cluster_labels,
 )
 
@@ -66,8 +68,11 @@ df_plays = db_read_table(
     artist=pl.col('master_metadata_album_artist_name'),
 )
 df_scrobbles = db_read_table('lastfm.scrobbles', ['dt', 'song', 'artist', 'album'])
-df_lyrics_embed = db_read_table('genius.lyrics_embed_clustering').with_columns(
+df_lyrics_cluster_vecs = db_read_table('genius.lyrics_embed_clustering').with_columns(
     pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM))
+)
+df_lyrics_search_vecs = db_read_table('genius.lyrics_embed').with_columns(
+    pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM))
 )
 df_lyrics_big5 = db_read_table('genius.lyrics_big5').with_columns(
     pl.col('outputs').cast(pl.Array(pl.Float64, 5))
@@ -79,15 +84,16 @@ df_lastfm_genius_matches = db_read_table('lastfm.genius_matches').drop_nulls('g_
 ###
 ### Clustering
 ###
+df_lyrics_search_vecs.write_parquet(SEARCH_VECTORS_PATH)
 (
-    df_lyrics_embed.lazy()
+    df_lyrics_cluster_vecs.lazy()
     .select('id', 'embedding')
     .with_columns(pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM)))
-    .sink_parquet(DATA_DIR / 'lyrics_embed.parquet')
+    .sink_parquet(CLUSTER_VECTORS_PATH)
 )
 
 print('running kmeans...')
-km = run_kmeans(df_lyrics_embed['embedding'], N_CLUSTERS, RANDOM_SEED)
+km = run_kmeans(df_lyrics_cluster_vecs['embedding'], N_CLUSTERS, RANDOM_SEED)
 
 with gzip.open(KMEANS_FILE, 'wb') as f:
     pickle.dump(km, f)
@@ -103,7 +109,7 @@ df_centroids = (
 # df_embeddings_clustered: song ids, cluster labels, and centroid distances
 # (dropping embedding/centroid vectors to save space)
 df_embeddings_clustered: pl.LazyFrame = (
-    df_lyrics_embed.lazy()
+    df_lyrics_cluster_vecs.lazy()
     .rename({'id': 'g_id'})
     .with_columns(pl.Series('cluster', km.labels_))
     .join(df_centroids.lazy(), on='cluster')
@@ -189,7 +195,7 @@ plays_expanded: pl.LazyFrame = (
 
 # plays_clustered: plays_expanded with cluster labels
 plays_clustered: pl.LazyFrame = (
-    df_lyrics_embed.lazy()
+    df_lyrics_cluster_vecs.lazy()
     .select(id=pl.col('id'), cluster=pl.Series(km.labels_, dtype=pl.Int64))
     # merge with song plays
     .join(plays_expanded.lazy(), left_on='id', right_on='g_id', how='right')

@@ -26,6 +26,8 @@ KMEANS_FILE = DATA_DIR / 'kmeans.pkl.gz'
 
 # embeddings
 EMBEDDING_DIM = 768
+SEARCH_VECTORS_PATH = DATA_DIR / 'lyrics_search_vecs.parquet'
+CLUSTER_VECTORS_PATH = DATA_DIR / 'lyrics_cluster_vecs.parquet'
 
 # session binning
 SES_MAX_GAP = pl.duration(days=1)  # max gap between consecutive songs in a session
