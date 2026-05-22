@@ -47,15 +47,33 @@ DATA_DIR.mkdir(exist_ok=True)
 ###
 ### Read data
 ###
-df_plays = db_read_table('spotify.streams')
-df_lyrics = db_read_table('genius.lyrics')
-df_lyrics_embed = db_read_table('genius.lyrics_embed_v1').with_columns(
+df_plays = db_read_table(
+    'spotify.streams',
+    [
+        'ts',
+        'spotify_track_uri',
+        'master_metadata_track_name',
+        'master_metadata_album_album_name',
+        'master_metadata_album_artist_name',
+    ],
+).select(
+    dt=pl.col('ts'),
+    id=pl.col('spotify_track_uri')
+        .str.split_exact(':', 2)
+        .struct.field('field_2'),
+    song=pl.col('master_metadata_track_name'),
+    album=pl.col('master_metadata_album_album_name'),
+    artist=pl.col('master_metadata_album_artist_name'),
+)
+df_scrobbles = db_read_table('lastfm.scrobbles', ['dt', 'song', 'artist', 'album'])
+df_lyrics_embed = db_read_table('genius.lyrics_embed_clustering').with_columns(
     pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM))
 )
-df_lyrics_big5 = db_read_table('genius.lyrics_big5_v1').with_columns(
+df_lyrics_big5 = db_read_table('genius.lyrics_big5').with_columns(
     pl.col('outputs').cast(pl.Array(pl.Float64, 5))
 )
-df_genius = db_read_table('genius.song_matches')
+df_spotify_genius_matches = db_read_table('genius.song_matches')
+df_lastfm_genius_matches = db_read_table('lastfm.genius_matches').drop_nulls('g_id')
 
 
 ###
@@ -74,7 +92,7 @@ km = run_kmeans(df_lyrics_embed['embedding'], N_CLUSTERS, RANDOM_SEED)
 with gzip.open(KMEANS_FILE, 'wb') as f:
     pickle.dump(km, f)
 
-
+# df_centroids: cluster labels and centroid vectors
 df_cluster_labels = make_df_cluster_labels(N_CLUSTERS)
 df_centroids = (
     pl.DataFrame(pl.Series('centroid', km.cluster_centers_))
@@ -82,6 +100,8 @@ df_centroids = (
     .join(df_cluster_labels, 'cluster', 'left')
 )
 
+# df_embeddings_clustered: song ids, cluster labels, and centroid distances
+# (dropping embedding/centroid vectors to save space)
 df_embeddings_clustered: pl.LazyFrame = (
     df_lyrics_embed.lazy()
     .rename({'id': 'g_id'})
@@ -90,7 +110,7 @@ df_embeddings_clustered: pl.LazyFrame = (
     # EXPERIMENTAL spectral-clustering centroids
     # .with_columns(centroid_dist = pl.col('centroid').sub(pl.Series(spectra)))
     # EXPERIMENTAL end
-    .with_columns(centroid_dist=pl.col('centroid').sub(pl.col('embedding')))
+    .with_columns(centroid_dist=pl.col('centroid') - pl.col('embedding'))
     .with_columns(
         pl.col('centroid_dist').map_batches(
             lambda vec: np.linalg.norm(vec, axis=1),
@@ -98,7 +118,7 @@ df_embeddings_clustered: pl.LazyFrame = (
             return_dtype=pl.Float64,
         )
     )
-    .drop('centroid', 'embedding')  # dropping embedding/centroid vectors to save space
+    .select('g_id', 'cluster', 'cluster_label', 'centroid_dist')
 )
 
 df_embeddings_clustered.sink_parquet(DATA_DIR / 'df_embeddings_clustered.parquet')
@@ -107,29 +127,42 @@ df_embeddings_clustered.sink_parquet(DATA_DIR / 'df_embeddings_clustered.parquet
 ###
 ### Get and transform scrobbles
 ###
+
+# plays_matched: lastfm and spotify plays with matching genius song ids
+scrobbles_matched = df_scrobbles.lazy().join(
+    df_lastfm_genius_matches.lazy().select('song', 'artist', 'g_id'),
+    on=('song', 'artist'),
+    how='left',
+)
+spotify_matched = (
+    df_plays.lazy()
+    .join(df_spotify_genius_matches.lazy().select('id', 'g_id'), on='id', how='left')
+    .drop('id')
+)
+plays_matched = pl.concat((spotify_matched, scrobbles_matched))
+
+# plays_expanded: plays_matched with expanded date/time info
+#
 # Time bins are 6h bins that reset at 3am:
 # [3:00 - 9:00) = morning
 # [9:00 - 15:00) = midday
 # [15:00 - 21:00) = evening
 # [21:00 - 3:00) = night
 plays_expanded: pl.LazyFrame = (
-    df_plays.lazy()
-    .with_columns(dt=pl.col('ts').dt.convert_time_zone(TIME_ZONE))
+    plays_matched.with_columns(pl.col('dt').dt.convert_time_zone(TIME_ZONE))
     .with_columns(
         year=pl.col('dt').dt.year(),
         month=pl.col('dt').dt.month(),
         day=pl.col('dt').dt.day(),
-        weekday=pl.col('dt').dt.weekday().sub(1),
+        weekday=pl.col('dt').dt.weekday() - 1,
         time=pl.col('dt').dt.time(),
-    )
-    .with_columns(
-        is_weekend=pl.col('weekday').ge(5),
         dectime=(
             pl.col('dt').dt.hour()
             + pl.col('dt').dt.minute() / 60
             + pl.col('dt').dt.second() / 3600
         ),
     )
+    .with_columns(is_weekend=pl.col('weekday') >= 5)
     .with_columns(
         timebin=pl.col('dectime')
         .sub(3)
@@ -139,15 +172,10 @@ plays_expanded: pl.LazyFrame = (
     )
     .select(
         'dt',
-        (
-            pl.col('spotify_track_uri')
-            .str.split_exact(':', 2)
-            .struct.field('field_2')
-            .alias('id')
-        ),
-        pl.col('master_metadata_track_name').alias('song'),
-        pl.col('master_metadata_album_album_name').alias('album'),
-        pl.col('master_metadata_album_artist_name').alias('artist'),
+        'g_id',
+        'song',
+        'album',
+        'artist',
         'year',
         'month',
         'day',
@@ -159,16 +187,12 @@ plays_expanded: pl.LazyFrame = (
     )
 )
 
+# plays_clustered: plays_expanded with cluster labels
 plays_clustered: pl.LazyFrame = (
     df_lyrics_embed.lazy()
-    .drop('embedding')
-    .with_columns(cluster=pl.Series(km.labels_, dtype=pl.Int64))
-    .join(df_lyrics.lazy(), on='id', how='inner')
-    # merge with genius song metadata
-    .join(df_genius.lazy(), left_on='id', right_on='g_id', how='inner')
-    .rename({'id': 'g_id', 'id_right': 'id'})
+    .select(id=pl.col('id'), cluster=pl.Series(km.labels_, dtype=pl.Int64))
     # merge with song plays
-    .join(plays_expanded.lazy(), on='id')
+    .join(plays_expanded.lazy(), left_on='id', right_on='g_id', how='right')
     # group into sessions of at most 1 day between scrobbles
     .sort('dt')
     .with_columns(
@@ -188,6 +212,9 @@ plays_clustered.sink_parquet(DATA_DIR / 'plays_clustered.parquet')
 ### Group scrobbles into contiguous sessions
 ###
 
+# df_sessions: plays_clustered, grouped into sessions
+# includes session number, start, end, duration, and length
+# "session" means a continuous listening period with at most 24h between songs
 df_sessions = (
     plays_clustered.with_columns(
         session=pl.col('timediff').fill_null(pl.duration()).gt(SES_MAX_GAP).cum_sum()
@@ -195,50 +222,36 @@ df_sessions = (
     # add session-level stats
     .with_columns(
         prev_cluster=pl.col('cluster').shift(1).over('session'),
-        # skipping latent_dist bc there's not much variation there
-        # latent_dist=(
-        #     pl.col('embedding') - pl.col('embedding').shift(1).over('session')
-        # ),
         ses_start=pl.col('dt').min().over('session'),
         ses_end=pl.col('dt').max().over('session'),
         ses_len=pl.len().over('session'),
         n_within_ses=pl.row_index().over('session'),
     )
-    .with_columns(
-        # pl.col('latent_dist').map_batches(
-        #     lambda vec: np.linalg.norm(vec, axis=1),
-        #     returns_scalar=True,
-        #     return_dtype=pl.Float64,
-        # ),
-        ses_dur=pl.col('ses_end') - pl.col('ses_start'),
-    )
+    .with_columns(ses_dur=pl.col('ses_end') - pl.col('ses_start'))
     .join(df_cluster_labels.lazy(), 'cluster', 'left')
     .select(
-        [
-            'session',
-            'ses_start',
-            'ses_end',
-            'ses_dur',
-            'ses_len',
-            'n_within_ses',
-            'dt',
-            'timebin',
-            'year',
-            'month',
-            'timediff',
-            'cluster',
-            'prev_cluster',
-            'cluster_label',
-            # 'latent_dist',
-            'g_id',
-            'song',
-            'artist',
-            'album',
-        ]
+        'session',
+        'ses_start',
+        'ses_end',
+        'ses_dur',
+        'ses_len',
+        'n_within_ses',
+        'dt',
+        'timebin',
+        'year',
+        'month',
+        'timediff',
+        'cluster',
+        'prev_cluster',
+        'cluster_label',
+        'g_id',
+        'song',
+        'artist',
+        'album',
     )
 )
 
-
+# df_cluster_stats: cluster-level stats
 df_cluster_stats = (
     df_sessions.lazy()
     .group_by('cluster')
@@ -255,19 +268,25 @@ df_cluster_stats = (
         pl.col('freq', 'n_plays', 'n_unique_plays', 'n_sessions').replace(None, 0)
     )
     .select(
-        [
-            'cluster',
-            'cluster_label',
-            'freq',
-            'n_plays',
-            'n_unique_plays',
-            'n_sessions',
-            'top_song_id',
-            'centroid',
-        ]
+        'cluster',
+        'cluster_label',
+        'freq',
+        'n_plays',
+        'n_unique_plays',
+        'n_sessions',
+        'top_song_id',
+        'centroid',
     )
 )
 
+# df_stats_all_months: month-level stats
+# includes:
+#   year and month
+#   play count
+#   session count
+#   session aggregates
+#   cluster mode
+#   cluster diversity
 _df_session_group_agg = (
     df_sessions.lazy()
     .group_by(['year', 'month', 'cluster'])
@@ -292,8 +311,6 @@ df_stats_all_months = (
         cluster_mode_count=(
             pl.col('cluster').eq(pl.col('cluster').mode().first()).sum()
         ),
-        # latent_dist_mean=pl.col('latent_dist').drop_nans().mean(),
-        # latent_dist_med=pl.col('latent_dist').drop_nans().median(),
     )
     .with_columns(
         pl.date(pl.col('year'), pl.col('month'), 1),
@@ -301,8 +318,24 @@ df_stats_all_months = (
     )
     .join(_df_session_group_agg, on=['year', 'month'])
     .sort(['year', 'month'])
+    .select(
+        'date',
+        'year',
+        'month',
+        'n_plays',
+        'n_sessions',
+        'ses_len_median',
+        'ses_len_max',
+        'cluster_mode',
+        'cluster_mode_count',
+        'cluster_mode_freq',
+        'gini',
+        'shannon',
+        'berger',
+    )
 )
 
+# df_cluster_per_month: cluster distribution per year/month
 df_cluster_per_month = (
     plays_clustered.group_by(['year', 'month', 'cluster'])
     .agg(pl.len().alias('n_cluster_plays'))
@@ -313,15 +346,13 @@ df_cluster_per_month = (
         pl.col('n_cluster_plays').truediv(pl.col('n_plays')).alias('cluster_freq'),
     )
     .select(
-        [
-            'year',
-            'month',
-            'date',
-            'cluster',
-            'cluster_label',
-            'n_cluster_plays',
-            'cluster_freq',
-        ]
+        'year',
+        'month',
+        'date',
+        'cluster',
+        'cluster_label',
+        'n_cluster_plays',
+        'cluster_freq',
     )
     .sort(['year', 'month', 'cluster'])
 )
@@ -336,13 +367,18 @@ df_cluster_per_month.sink_parquet(DATA_DIR / 'df_cluster_per_month.parquet')
 ###
 ### Build cluster traversal graphs
 ###
+
+# ses_graph_full: session graph spanning the full timeline
+# nodes are clusters,
+# edges are weighted by within-session transition frequency
 print('building cluster graph...')
 ses_graph_full = nx.DiGraph()
 ses_graph_full.add_nodes_from(
     [
         (c, {'name': n, 'weight': w})
         for c, n, w in (
-            df_sessions.group_by(['cluster', 'cluster_label'])
+            df_sessions.drop_nulls('cluster')
+            .group_by(['cluster', 'cluster_label'])
             .len()
             .sort('cluster')
             .collect()
@@ -366,10 +402,17 @@ with gzip.open(DATA_DIR / 'ses_graph_full.pkl.gz', 'wb') as f:
 ###
 ### Big 5 scores
 ###
+
+# big5: trait scores per year/month
+# one row per trait, per year/month
+# also includes neutral, postiive, and negative trait labels
+# logit = raw output from model
+# score = tanh[logit] (range -1 to 1)
+# score_pct = score * 100
 print('getting big-5 scores...')
 big5 = (
     df_sessions.lazy()
-    .join(df_lyrics_big5.lazy(), left_on='g_id', right_on='id', how='left')
+    .join(df_lyrics_big5.lazy(), left_on='g_id', right_on='id')
     .with_columns(date=pl.date(pl.col('year'), pl.col('month'), 1))
     .select('outputs', 'date')
 )
@@ -395,5 +438,16 @@ big5 = (
         score=pl.col('logit').tanh(),
     )
     .with_columns(score_pct=pl.col('score').abs() * 100)
+    .select(
+        'date',
+        'logit',
+        'trait',
+        'trait_short',
+        'trait_pos',
+        'trait_neg',
+        'trait_desc',
+        'score',
+        'score_pct',
+    )
 )
 big5.sink_parquet(DATA_DIR / 'big5.parquet')

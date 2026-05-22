@@ -12,10 +12,14 @@ from polars import selectors as cs
 import streamlit as st
 
 
-def db_read_table(tbl: str):
+def db_read_table(tbl: str, cols=None):
     tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
+    if cols:
+        cols_str = ', '.join(f'"{col}"' for col in cols)
+    else:
+        cols_str = '*'
     return pl.read_database_uri(
-        f'SELECT * FROM {tbl}', st.secrets['connections']['neon']['url']
+        f'SELECT {cols_str} FROM {tbl}', st.secrets['connections']['neon']['url']
     ).drop(cs.starts_with('_dlt_'))
 
 
