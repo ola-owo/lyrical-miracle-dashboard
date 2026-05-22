@@ -5,7 +5,7 @@ from pathlib import Path
 
 import plotly
 import polars as pl
-import streamlit.components.v1 as components
+import streamlit as st
 
 
 ###
@@ -84,7 +84,7 @@ def timeout_popup(timeout_ms: int = 1_800_000):
 
     source: discuss.streamlit.io/t/streamlit-app-deployment-expensive-on-cloud-run/65337/10
     """
-    components.html(
+    return st.iframe(
         """
         <script>
         (function () {
@@ -106,7 +106,8 @@ def timeout_popup(timeout_ms: int = 1_800_000):
         scheduleNext();
         })();
         </script>
-        """
-        % timeout_ms,
-        height=0,
+        """ % timeout_ms,
+        width='content',
+        height='content',
+        tab_index=-1,
     )
