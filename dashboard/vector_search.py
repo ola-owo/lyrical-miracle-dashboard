@@ -1,3 +1,5 @@
+"""Vector search tools"""
+
 import streamlit as st
 import numpy as np
 import polars as pl
@@ -13,7 +15,9 @@ from common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
 ### Get lyrics embeddings and build index
 ###
 def get_lyrics_embed():
-    return pl.scan_parquet(SEARCH_VECTORS_PATH).cast(pl.Array(pl.Float32, EMBEDDING_DIM))
+    return pl.scan_parquet(SEARCH_VECTORS_PATH).cast(
+        pl.Array(pl.Float32, EMBEDDING_DIM)
+    )
 
 
 @st.cache_resource
@@ -25,12 +29,7 @@ def make_index():
     This is best for smallish ( < 1M) datasets with few searches
     """
     df_lyrics_embed = get_lyrics_embed()
-    emb_mat = (
-        df_lyrics_embed.select('embedding')
-        .collect()
-        .to_series()
-        .to_numpy()
-    )
+    emb_mat = df_lyrics_embed.select('embedding').collect().to_series().to_numpy()
 
     emb_index = faiss.IndexIDMap(faiss.IndexFlatIP(EMBEDDING_DIM))
     emb_index.add_with_ids(emb_mat, df_lyrics_embed.select('id').collect().to_series())

@@ -1,7 +1,4 @@
-"""
-Custom duckdb connection
-source: https://github.com/streamlit/release-demos/blob/master/1.22/st-experimental-connection/duckdb_connection/connection.py
-"""
+"""Database I/O tools"""
 
 from streamlit.connections import ExperimentalBaseConnection
 from streamlit.runtime.caching import cache_data
@@ -46,7 +43,10 @@ def duckdb_read_query(q: str):
 
 
 class DuckDBConnection(ExperimentalBaseConnection[duckdb.DuckDBPyConnection]):
-    """Basic st.experimental_connection implementation for DuckDB"""
+    """
+    Custom duckdb connection
+    source: https://github.com/streamlit/release-demos/blob/master/1.22/st-experimental-connection/duckdb_connection/connection.py
+    """
 
     def _connect(self, **kwargs) -> duckdb.DuckDBPyConnection:
         if 'database' in kwargs:

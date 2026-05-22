@@ -1,4 +1,4 @@
-"Cluster tracks according to lyrics embeddings"
+"""Cluster tracks according to lyrics embeddings"""
 
 import numpy as np
 from scipy import sparse

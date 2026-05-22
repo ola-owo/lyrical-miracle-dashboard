@@ -1,3 +1,5 @@
+"""Network graph tools"""
+
 from streamlit_agraph import agraph, Node, Edge, Config
 import networkx as nx
 import plotly.colors

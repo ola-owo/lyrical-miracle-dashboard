@@ -60,9 +60,7 @@ df_plays = db_read_table(
     ],
 ).select(
     dt=pl.col('ts'),
-    id=pl.col('spotify_track_uri')
-        .str.split_exact(':', 2)
-        .struct.field('field_2'),
+    id=pl.col('spotify_track_uri').str.split_exact(':', 2).struct.field('field_2'),
     song=pl.col('master_metadata_track_name'),
     album=pl.col('master_metadata_album_album_name'),
     artist=pl.col('master_metadata_album_artist_name'),

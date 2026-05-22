@@ -1,3 +1,5 @@
+"""Commonly used constants and functions"""
+
 from string import ascii_uppercase as ALPHABET
 from pathlib import Path
 
