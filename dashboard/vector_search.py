@@ -7,8 +7,8 @@ from google import genai
 from google.genai import types
 import faiss
 
-from database import db_read_query
-from common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
+from dashboard.database import db_read_query
+from dashboard.common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
 
 
 ###
@@ -16,7 +16,7 @@ from common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
 ###
 def get_lyrics_embed():
     return pl.scan_parquet(SEARCH_VECTORS_PATH).cast(
-        pl.Array(pl.Float32, EMBEDDING_DIM)
+        {'embedding': pl.Array(pl.Float32, EMBEDDING_DIM)}
     )
 
 
@@ -30,9 +30,10 @@ def make_index():
     """
     df_lyrics_embed = get_lyrics_embed()
     emb_mat = df_lyrics_embed.select('embedding').collect().to_series().to_numpy()
+    emb_labels = df_lyrics_embed.select('id').collect().to_series()
 
     emb_index = faiss.IndexIDMap(faiss.IndexFlatIP(EMBEDDING_DIM))
-    emb_index.add_with_ids(emb_mat, df_lyrics_embed.select('id').collect().to_series())
+    emb_index.add_with_ids(emb_mat, emb_labels)
     return emb_index
 
 
@@ -152,8 +153,7 @@ def transform_search_res(search_res: pl.DataFrame):
     search_res = search_res.unique('id')
     ids_str = '(' + ','.join(search_res['id'].cast(str)) + ')'
     query = f"""
-    SELECT id
-        , title song
+    SELECT title song
         , primary_artist_names artist
         , album__name album
         , album__release_date_for_display release_date

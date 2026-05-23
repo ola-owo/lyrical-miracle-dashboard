@@ -29,7 +29,8 @@ st.markdown("""Search for that one song that's on the tip of your tongue.
             Or find songs that match your mood right now.""")
 
 text_input = st.text_input(
-    label='',
+    label='Lyric search text',
+    label_visibility='collapsed',
     value=random.sample(SAMPLE_SEARCHES, 1)[0],
     max_chars=1000,
     key='lyric_search_text',

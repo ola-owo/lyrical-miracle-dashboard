@@ -3,7 +3,7 @@
 import requests
 import streamlit as st
 
-from database import db_read_query
+from dashboard.database import db_read_query
 
 
 def lastfm_request(params: dict):

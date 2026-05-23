@@ -106,7 +106,8 @@ def timeout_popup(timeout_ms: int = 1_800_000):
         scheduleNext();
         })();
         </script>
-        """ % timeout_ms,
+        """
+        % timeout_ms,
         width='content',
         height='content',
         tab_index=-1,

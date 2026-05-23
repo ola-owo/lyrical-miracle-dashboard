@@ -75,7 +75,7 @@ df_lyrics_search_vecs = db_read_table('genius.lyrics_embed').with_columns(
 df_lyrics_big5 = db_read_table('genius.lyrics_big5').with_columns(
     pl.col('outputs').cast(pl.Array(pl.Float64, 5))
 )
-df_spotify_genius_matches = db_read_table('genius.song_matches')
+df_spotify_genius_matches = db_read_table('spotify.genius_matches')
 df_lastfm_genius_matches = db_read_table('lastfm.genius_matches').drop_nulls('g_id')
 
 

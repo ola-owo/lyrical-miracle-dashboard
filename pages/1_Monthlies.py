@@ -10,7 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from dashboard.graphs import plot_network_agraph
-from dashboard.albumart import get_genius_img, get_lastfm_img
+from dashboard.albumart import get_genius_img
 from dashboard.database import db_read_query
 from dashboard.common import (
     DATA_DIR,
@@ -142,13 +142,24 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
     # get song ids from db
     g_ids_to_query = df['g_id'].unique()
     if g_ids_to_query.is_empty():
-        genius_song_matches = pl.DataFrame(schema={'id': pl.String, 'g_id': pl.Int32})
+        genius_song_matches = pl.LazyFrame(
+            schema={
+                'g_id': pl.Int32,
+                'song': pl.String,
+                'album': pl.String,
+                'artist': pl.String,
+            }
+        )
     else:
         g_ids_to_query_str = '(' + ','.join(g_ids_to_query.cast(str)) + ')'
-        g_ids_query = (
-            'SELECT id, g_id FROM "genius"."song_matches" WHERE g_id in '
-            + g_ids_to_query_str
-        )
+        g_ids_query = f"""
+            SELECT id g_id
+                , title song
+                , primary_artist_names artist
+                , album__name album
+            FROM "genius"."songs"
+            WHERE id in {g_ids_to_query_str}
+            """
         genius_song_matches = db_read_query(g_ids_query)
 
     return (
@@ -162,7 +173,7 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
             how='left',
         )
         .sort('cluster', 'centroid_dist')
-        .rename({'g_id': 'id', 'id': 'spotify_id'})
+        .rename({'g_id': 'id'})
         .drop([cs.starts_with('g_'), 'timediff'])
         .collect()
     )
@@ -174,7 +185,7 @@ cluster_similar_tracks_this_month = get_cluster_examples(st.session_state.select
 @st.cache_data
 def get_album_art(cluster_similar_tracks_this_month: pl.DataFrame) -> dict[int, str]:
     """
-    get album art urls,
+    get album art urls (from songs data table)
     return dictionary of g_id->url
     """
     image_meta = (
@@ -183,36 +194,23 @@ def get_album_art(cluster_similar_tracks_this_month: pl.DataFrame) -> dict[int, 
         .filter(
             pl.col('centroid_dist') == pl.col('centroid_dist').min().over('cluster')
         )
+        .rename({'id': 'g_id'})
         .unique('cluster')
         # get song names/ids
         .join(
-            plays_expanded.lazy().select('song', 'artist', 'id'),
-            ['song', 'artist'],
+            plays_expanded.lazy().select('song', 'artist', 'g_id'),
+            on='g_id',
             how='left',
         )
-        .rename({'id': 'g_id', 'id_right': 'song_id'})
-        .select('cluster', 'cluster_label', 'song', 'artist', 'song_id', 'g_id')
+        .select('cluster', 'cluster_label', 'song', 'artist', 'g_id')
         .sort('cluster')
         .collect()
     )
 
-    # album art image urls
-    image_urls = pl.Series([None] * image_meta.height, dtype=pl.String)
-
-    # 1st pass: get Genius thumbnails from "genius_full" table
-    for i, g_id in enumerate(image_meta['g_id']):
-        if g_id:
-            image_urls[i] = get_genius_img(g_id)
-
-    # 2nd pass: get lastfm images (uses lastfm API)
-    for i, songinfo in enumerate(image_meta.to_dicts()):
-        if image_urls[i]:
-            continue
-        image_urls[i] = get_lastfm_img(
-            artist=songinfo['artist'], song=songinfo['song'], mbid=songinfo['song_id']
-        )
-
-    image_meta = image_meta.with_columns(image=image_urls.replace(None, ''))
+    # album art image urls (from genius)
+    image_urls = [get_genius_img(g_id) if g_id else None for g_id in image_meta['g_id']]
+    image_urls = pl.Series('image', image_urls, pl.String)
+    image_meta = image_meta.with_columns(image_urls.replace(None, ''))
     image_dict = image_meta.select('cluster', 'image').rows_by_key('cluster')
     image_dict = {k: v[0][0] for k, v in image_dict.items()}
     return image_dict
@@ -230,7 +228,8 @@ def get_cluster_graph(date: pn.Date):
         [
             (c, {'name': n, 'weight': w})
             for c, n, w in (
-                df.group_by(['cluster', 'cluster_label'])
+                df.drop_nulls('cluster')
+                .group_by(['cluster', 'cluster_label'])
                 .len()
                 .sort('cluster')
                 .collect()
