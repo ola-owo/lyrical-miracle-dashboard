@@ -1,6 +1,7 @@
 FROM python:3.14-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-ENV UV_LINK_MODE=copy \
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
     UV_NO_CACHE=1 \
     UV_LOCKED=1 \
     UV_NO_DEV=1
