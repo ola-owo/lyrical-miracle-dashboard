@@ -280,7 +280,13 @@ def plot_big5(date):
     if date:
         big5_this_month = big5.filter(pl.col('date').dt.month_start() == date).collect()
     else:
-        big5_this_month = big5.collect()
+        big5_this_month = big5.group_by('trait_short').agg(
+            pl.col('trait').first(),
+            pl.col('trait_pos').first(),
+            pl.col('trait_neg').first(),
+            pl.col('trait_desc').first(),
+            pl.col('score').mean(),
+        ).with_columns(pl.col('score').abs().mul(100).alias('score_pct')).collect()
     fig_bar_big5 = px.bar(
         big5_this_month,
         x='trait_short',

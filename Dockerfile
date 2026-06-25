@@ -16,4 +16,4 @@ RUN uv sync
 ENV STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_PORT=8501
 EXPOSE $STREAMLIT_SERVER_PORT
-ENTRYPOINT ["uv", "run", "streamlit", "run", "Home.py"]
+ENTRYPOINT ["uv", "run", "--no-sync", "streamlit", "run", "Home.py"]
