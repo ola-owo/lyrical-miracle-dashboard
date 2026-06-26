@@ -151,16 +151,15 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
             }
         )
     else:
-        g_ids_to_query_str = '(' + ','.join(g_ids_to_query.cast(str)) + ')'
-        g_ids_query = f"""
+        g_ids_query = """
             SELECT id g_id
                 , title song
                 , primary_artist_names artist
                 , album__name album
             FROM "genius"."songs"
-            WHERE id in {g_ids_to_query_str}
+            WHERE id = ANY($1)
             """
-        genius_song_matches = db_read_query(g_ids_query)
+        genius_song_matches = db_read_query(g_ids_query, (g_ids_to_query.to_list(),))
 
     return (
         df.lazy()
@@ -280,13 +279,18 @@ def plot_big5(date):
     if date:
         big5_this_month = big5.filter(pl.col('date').dt.month_start() == date).collect()
     else:
-        big5_this_month = big5.group_by('trait_short').agg(
-            pl.col('trait').first(),
-            pl.col('trait_pos').first(),
-            pl.col('trait_neg').first(),
-            pl.col('trait_desc').first(),
-            pl.col('score').mean(),
-        ).with_columns(pl.col('score').abs().mul(100).alias('score_pct')).collect()
+        big5_this_month = (
+            big5.group_by('trait_short')
+            .agg(
+                pl.col('trait').first(),
+                pl.col('trait_pos').first(),
+                pl.col('trait_neg').first(),
+                pl.col('trait_desc').first(),
+                pl.col('score').mean(),
+            )
+            .with_columns(pl.col('score').abs().mul(100).alias('score_pct'))
+            .collect()
+        )
     fig_bar_big5 = px.bar(
         big5_this_month,
         x='trait_short',

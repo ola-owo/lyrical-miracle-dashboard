@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.23.11"
-app = marimo.App(width="medium")
+__generated_with = '0.23.11'
+app = marimo.App(width='medium')
 
 
 @app.cell(hide_code=True)
@@ -119,15 +119,14 @@ def _(EMBEDDING_DIM, db_read_table, pl):
         artist=pl.col('master_metadata_album_artist_name'),
     )
     df_scrobbles = db_read_table('lastfm.scrobbles', ['dt', 'song', 'artist', 'album'])
-    df_lyrics_cluster_vecs = db_read_table('genius.lyrics_embed_clustering').with_columns(
-        pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM))
-    )
+    df_lyrics_cluster_vecs = db_read_table(
+        'genius.lyrics_embed_clustering'
+    ).with_columns(pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM)))
     df_lyrics_search_vecs = db_read_table('genius.lyrics_embed').with_columns(
         pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM))
     )
     df_lyrics_big5 = db_read_table('genius.lyrics_big5').select(
-        pl.col('id'),
-        pl.concat_arr('opn', 'con', 'ext', 'agr', 'neu').alias('outputs')
+        pl.col('id'), pl.concat_arr('opn', 'con', 'ext', 'agr', 'neu').alias('outputs')
     )
     return (
         df_lyrics_big5,
@@ -266,7 +265,9 @@ def _(
     )
     spotify_matched = (
         df_plays.lazy()
-        .join(df_spotify_genius_matches.lazy().select('id', 'g_id'), on='id', how='left')
+        .join(
+            df_spotify_genius_matches.lazy().select('id', 'g_id'), on='id', how='left'
+        )
         .select('dt', 'song', 'album', 'artist', 'g_id')
     )
     plays_matched = pl.concat((spotify_matched, scrobbles_matched))
@@ -339,7 +340,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(df_lyrics_cluster_vecs, km, pl, plays_expanded: "pl.LazyFrame"):
+def _(df_lyrics_cluster_vecs, km, pl, plays_expanded: 'pl.LazyFrame'):
     plays_clustered: pl.LazyFrame = (
         df_lyrics_cluster_vecs.lazy()
         .select(id=pl.col('id'), cluster=pl.Series(km.labels_, dtype=pl.Int64))
@@ -359,8 +360,8 @@ def _(df_lyrics_cluster_vecs, km, pl, plays_expanded: "pl.LazyFrame"):
 @app.cell(hide_code=True)
 def _(
     DATA_DIR,
-    plays_clustered: "pl.LazyFrame",
-    plays_expanded: "pl.LazyFrame",
+    plays_clustered: 'pl.LazyFrame',
+    plays_expanded: 'pl.LazyFrame',
 ):
     plays_expanded.sink_parquet(DATA_DIR / 'plays_expanded.parquet')
     plays_clustered.sink_parquet(DATA_DIR / 'plays_clustered.parquet')
@@ -387,10 +388,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(SES_MAX_GAP, df_cluster_labels, pl, plays_clustered: "pl.LazyFrame"):
+def _(SES_MAX_GAP, df_cluster_labels, pl, plays_clustered: 'pl.LazyFrame'):
     df_sessions = (
         plays_clustered.with_columns(
-            session=pl.col('timediff').fill_null(pl.duration()).gt(SES_MAX_GAP).cum_sum()
+            session=pl.col('timediff')
+            .fill_null(pl.duration())
+            .gt(SES_MAX_GAP)
+            .cum_sum()
         )
         # add session-level stats
         .with_columns(
@@ -537,7 +541,7 @@ def _(
     df_cluster_labels,
     df_stats_all_months,
     pl,
-    plays_clustered: "pl.LazyFrame",
+    plays_clustered: 'pl.LazyFrame',
 ):
     df_cluster_per_month = (
         plays_clustered.group_by(['year', 'month', 'cluster'])
@@ -711,5 +715,5 @@ def _(DATA_DIR, big5):
     return
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run()

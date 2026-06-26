@@ -10,7 +10,8 @@ import streamlit as st
 
 
 def db_read_table(tbl: str, cols=None):
-    tbl = '.'.join(f'"{part}"' for part in tbl.strip('"').split('.'))
+    tbl = tbl.replace('"', '')
+    tbl = '.'.join(f'"{part}"' for part in tbl.split('.'))
     if cols:
         cols_str = ', '.join(f'"{col}"' for col in cols)
     else:
@@ -20,8 +21,15 @@ def db_read_table(tbl: str, cols=None):
     ).drop(cs.starts_with('_dlt_'))
 
 
-def db_read_query(q: str):
-    return pl.read_database_uri(q, st.secrets['connections']['neon']['url'])
+def db_read_query(q: str, params: tuple = None):
+    execute_options = {'parameters': params} if params else None
+    engine = 'adbc' if params else 'connectorx'
+    return pl.read_database_uri(
+        q,
+        st.secrets['connections']['neon']['url'],
+        engine=engine,
+        execute_options=execute_options,
+    )
 
 
 def duckdb_read_table(tbl: str):

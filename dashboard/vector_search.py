@@ -151,15 +151,14 @@ def transform_search_res(search_res: pl.DataFrame):
     if search_res.is_empty():
         return output_schema
     search_res = search_res.unique('id')
-    ids_str = '(' + ','.join(search_res['id'].cast(str)) + ')'
-    query = f"""
+    query = """
     SELECT title song
         , primary_artist_names artist
         , album__name album
         , album__release_date_for_display release_date
         , url
     FROM "genius"."songs"
-    WHERE id in {ids_str}
+    WHERE id = ANY($1)
     """
 
-    return db_read_query(query)
+    return db_read_query(query, (search_res['id'].to_list(),))

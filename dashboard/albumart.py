@@ -48,10 +48,10 @@ def get_lastfm_img(artist, song, mbid=None) -> str | None:
 @st.cache_data
 def get_genius_img(g_id: int) -> str | None:
     """get a song's album cover url from the genius songs table"""
-    # TODO: sanitize this
     g = db_read_query(
-        f"""SELECT song_art_image_thumbnail_url FROM "genius"."songs"
-        WHERE id = {g_id} LIMIT 1"""
+        """SELECT song_art_image_thumbnail_url FROM "genius"."songs"
+        WHERE id = $1 LIMIT 1""",
+        (g_id,),
     )
 
     if g.is_empty():
