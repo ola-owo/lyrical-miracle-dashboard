@@ -1,12 +1,11 @@
 """Commonly used constants and functions"""
 
-from string import ascii_uppercase as ALPHABET
 from pathlib import Path
+from string import ascii_uppercase as ALPHABET
 
 import plotly
 import polars as pl
 import streamlit as st
-
 
 ###
 ### Globals
@@ -106,7 +105,7 @@ def timeout_popup(timeout_ms: int = 1_800_000):
         scheduleNext();
         })();
         </script>
-        """
+        """  # noqa: UP031
         % timeout_ms,
         width='content',
         height='content',

@@ -1,14 +1,14 @@
 """Vector search tools"""
 
-import streamlit as st
+import faiss
 import numpy as np
 import polars as pl
+import streamlit as st
 from google import genai
 from google.genai import types
-import faiss
 
-from dashboard.database import db_read_query
 from dashboard.common import EMBEDDING_DIM, SEARCH_VECTORS_PATH
+from dashboard.database import db_read_query
 
 
 ###

@@ -1,6 +1,6 @@
-import streamlit as st
-import polars as pl
 import plotly.express as px
+import polars as pl
+import streamlit as st
 
 from dashboard.common import (
     DATA_DIR,

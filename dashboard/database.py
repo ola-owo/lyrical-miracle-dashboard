@@ -1,12 +1,11 @@
 """Database I/O tools"""
 
-from streamlit.connections import ExperimentalBaseConnection
-from streamlit.runtime.caching import cache_data
-
 import duckdb
 import polars as pl
-from polars import selectors as cs
 import streamlit as st
+from polars import selectors as cs
+from streamlit.connections import ExperimentalBaseConnection
+from streamlit.runtime.caching import cache_data
 
 
 def db_read_table(tbl: str, cols=None):
@@ -21,7 +20,7 @@ def db_read_table(tbl: str, cols=None):
     ).drop(cs.starts_with('_dlt_'))
 
 
-def db_read_query(q: str, params: tuple = None):
+def db_read_query(q: str, params: tuple | None = None):
     execute_options = {'parameters': params} if params else None
     engine = 'adbc' if params else 'connectorx'
     return pl.read_database_uri(

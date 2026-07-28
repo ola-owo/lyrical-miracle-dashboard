@@ -1,3 +1,4 @@
+# ruff: noqa: PLR1711, F821, UP037
 import marimo
 
 __generated_with = '0.23.11'
@@ -26,36 +27,35 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    import marimo as mo
-
-    import pickle
     import gzip
+    import pickle
 
+    import marimo as mo
+    import networkx as nx
     import numpy as np
     import polars as pl
     import polars.selectors as cs
-    import networkx as nx
 
     from dashboard.clustering import run_kmeans
-    from dashboard.database import db_read_table
     from dashboard.common import (
-        TIME_ZONE,
-        RANDOM_SEED,
+        BIG5_TRAITS,
+        BIG5_TRAITS_NEG,
+        BIG5_TRAITS_POS,
+        BIG5_TRAITS_SHORT,
+        CLUSTER_VECTORS_PATH,
         DATA_DIR,
+        EMBEDDING_DIM,
+        KMEANS_FILE,
+        N_CLUSTERS,
+        RANDOM_SEED,
+        SEARCH_VECTORS_PATH,
+        SES_MAX_GAP,
         TIME_BIN_BOUNDARIES,
         TIME_BIN_LABELS,
-        BIG5_TRAITS,
-        BIG5_TRAITS_SHORT,
-        BIG5_TRAITS_POS,
-        BIG5_TRAITS_NEG,
-        KMEANS_FILE,
-        SES_MAX_GAP,
-        N_CLUSTERS,
-        EMBEDDING_DIM,
-        CLUSTER_VECTORS_PATH,
-        SEARCH_VECTORS_PATH,
+        TIME_ZONE,
         make_df_cluster_labels,
     )
+    from dashboard.database import db_read_table
 
     return (
         BIG5_TRAITS,
@@ -673,12 +673,12 @@ def _(
         .select('outputs', 'date')
     )
     df_traits = pl.LazyFrame(
-        dict(
-            trait=BIG5_TRAITS,
-            trait_short=BIG5_TRAITS_SHORT,
-            trait_pos=BIG5_TRAITS_POS,
-            trait_neg=BIG5_TRAITS_NEG,
-        )
+        {
+            'trait': BIG5_TRAITS,
+            'trait_short': BIG5_TRAITS_SHORT,
+            'trait_pos': BIG5_TRAITS_POS,
+            'trait_neg': BIG5_TRAITS_NEG,
+        }
     ).with_row_index('n')
     big5 = (
         big5.with_columns(n=range(5))

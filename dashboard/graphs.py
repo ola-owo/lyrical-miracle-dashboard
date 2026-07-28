@@ -1,11 +1,11 @@
 """Network graph tools"""
 
-from streamlit_agraph import agraph, Node, Edge, Config
 import networkx as nx
 import plotly.colors
+from streamlit_agraph import Config, Edge, Node, agraph
 
 
-def plot_network_agraph(g: nx.Graph, images: dict[int, str] = None, palette=None):
+def plot_network_agraph(g: nx.Graph, images: dict[int, str] | None = None, palette=None):
     if not palette:
         palette = plotly.colors.qualitative.D3
 
@@ -40,7 +40,7 @@ def plot_network_agraph(g: nx.Graph, images: dict[int, str] = None, palette=None
         directed=isinstance(g, nx.DiGraph),
         physics=True,
         solver='repulsion',
-        interaction=dict(selectable=False),
+        interaction={'selectable': False},
     )
 
     return agraph(nodes, edges, config)

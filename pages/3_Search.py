@@ -2,8 +2,8 @@ import random
 
 import streamlit as st
 
-from dashboard.vector_search import text_search, transform_search_res
 from dashboard.common import timeout_popup
+from dashboard.vector_search import text_search, transform_search_res
 
 MAX_SEARCH_RESULTS = 5
 SAMPLE_SEARCHES = [

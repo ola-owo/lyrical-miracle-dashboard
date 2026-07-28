@@ -2,7 +2,6 @@ import streamlit as st
 
 from dashboard.common import timeout_popup
 
-
 timeout_popup()
 st.set_page_config(
     page_title='The Lyrical Miracle',

@@ -1,25 +1,24 @@
 import gzip
 import pickle
 
-import streamlit as st
-import pendulum as pn
 import networkx as nx
-import polars as pl
-import polars.selectors as cs
+import pendulum as pn
 import plotly.express as px
 import plotly.graph_objects as go
+import polars as pl
+import polars.selectors as cs
+import streamlit as st
 
-from dashboard.graphs import plot_network_agraph
 from dashboard.albumart import get_genius_img
-from dashboard.database import db_read_query
 from dashboard.common import (
+    BIG5_TRAITS_SHORT,
     DATA_DIR,
     PALETTE,
-    BIG5_TRAITS_SHORT,
     make_df_cluster_labels,
     timeout_popup,
 )
-
+from dashboard.database import db_read_query
+from dashboard.graphs import plot_network_agraph
 
 timeout_popup()
 st.set_page_config(page_title='Your Monthly Music Breakdown', page_icon='📅')
@@ -336,7 +335,7 @@ def plot_cluster_piechart():
                     textinfo='label+value',
                     hoverinfo='percent',
                     sort=False,
-                    marker=dict(colors=PALETTE),
+                    marker={'colors': PALETTE},
                 )
             ]
         )
@@ -372,15 +371,15 @@ def plot_cluster_times_polar(date: pn.Date):
         color_discrete_sequence=PALETTE,
     )
     polar_hist_scrobble_times.update_layout(
-        polar=dict(
-            angularaxis=dict(
-                type='category',
-                tickvals=list(range(24)),
-                direction='clockwise',
-                rotation=90,
-                period=24,  # Forces the circle to represent 24 units
-            )
-        )
+        polar={
+            'angularaxis': {
+                'type': 'category',
+                'tickvals': list(range(24)),
+                'direction': 'clockwise',
+                'rotation': 90,
+                'period': 24,  # Forces the circle to represent 24 units
+            }
+        }
     )
     st.plotly_chart(polar_hist_scrobble_times)
 
