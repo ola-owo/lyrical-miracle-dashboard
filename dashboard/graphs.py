@@ -5,7 +5,9 @@ import plotly.colors
 from streamlit_agraph import Config, Edge, Node, agraph
 
 
-def plot_network_agraph(g: nx.Graph, images: dict[int, str] | None = None, palette=None):
+def plot_network_agraph(
+    g: nx.Graph, images: dict[int, str] | None = None, palette=None
+):
     if not palette:
         palette = plotly.colors.qualitative.D3
 

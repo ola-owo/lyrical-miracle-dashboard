@@ -158,7 +158,7 @@ def transform_search_res(search_res: pl.DataFrame):
         , album__release_date_for_display release_date
         , url
     FROM "genius"."songs"
-    WHERE id = ANY($1)
+    WHERE id in $ids
     """
 
-    return db_read_query(query, (search_res['id'].to_list(),))
+    return db_read_query(query, {'ids': search_res['id'].to_list()})

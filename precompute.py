@@ -104,7 +104,7 @@ def _(mo):
 def _(EMBEDDING_DIM, db_read_table, pl):
     df_plays = db_read_table(
         'spotify.streams',
-        [
+        cols=[
             'ts',
             'spotify_track_uri',
             'master_metadata_track_name',
@@ -118,7 +118,9 @@ def _(EMBEDDING_DIM, db_read_table, pl):
         album=pl.col('master_metadata_album_album_name'),
         artist=pl.col('master_metadata_album_artist_name'),
     )
-    df_scrobbles = db_read_table('lastfm.scrobbles', ['dt', 'song', 'artist', 'album'])
+    df_scrobbles = db_read_table(
+        'lastfm.scrobbles', cols=['dt', 'song', 'artist', 'album']
+    )
     df_lyrics_cluster_vecs = db_read_table(
         'genius.lyrics_embed_clustering'
     ).with_columns(pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM)))

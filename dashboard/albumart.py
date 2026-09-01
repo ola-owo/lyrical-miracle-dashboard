@@ -50,8 +50,8 @@ def get_genius_img(g_id: int) -> str | None:
     """get a song's album cover url from the genius songs table"""
     g = db_read_query(
         """SELECT song_art_image_thumbnail_url FROM "genius"."songs"
-        WHERE id = $1 LIMIT 1""",
-        (g_id,),
+        WHERE id = $id LIMIT 1""",
+        {'id': g_id},
     )
 
     if g.is_empty():
