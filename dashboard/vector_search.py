@@ -157,8 +157,8 @@ def transform_search_res(search_res: pl.DataFrame):
         , album__name album
         , album__release_date_for_display release_date
         , url
-    FROM "genius"."songs"
-    WHERE id in $ids
+    FROM `genius.songs`
+    WHERE id in UNNEST(@ids)
     """
 
     return db_read_query(query, {'ids': search_res['id'].to_list()})

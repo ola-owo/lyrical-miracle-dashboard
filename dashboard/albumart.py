@@ -49,8 +49,8 @@ def get_lastfm_img(artist, song, mbid=None) -> str | None:
 def get_genius_img(g_id: int) -> str | None:
     """get a song's album cover url from the genius songs table"""
     g = db_read_query(
-        """SELECT song_art_image_thumbnail_url FROM "genius"."songs"
-        WHERE id = $id LIMIT 1""",
+        """SELECT song_art_image_thumbnail_url FROM `genius.songs`
+        WHERE id = @id LIMIT 1""",
         {'id': g_id},
     )
 

@@ -81,7 +81,7 @@ n_clusters = df_cluster_stats.select(pl.len()).collect().item()
 df_cluster_labels = make_df_cluster_labels(n_clusters)
 
 
-def filter_df_by_month(df, date: pn.Date):
+def filter_df_by_month(df, date: pn.Date|None):
     if not date:
         return df
     return df.filter((pl.col('year') == date.year) & (pl.col('month') == date.month))
@@ -130,7 +130,7 @@ cluster_stats_this_period = get_cluster_stats(
 
 
 @st.cache_data
-def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
+def get_cluster_examples(date: pn.Date|None) -> pl.DataFrame:
     # get intermediate df with ids of songs to query from db
     df = (
         df_embeddings_clustered.lazy()
@@ -155,10 +155,10 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
                 , title song
                 , primary_artist_names artist
                 , album__name album
-            FROM "genius"."songs"
-            WHERE id = ANY($1)
+            FROM `genius.songs`
+            WHERE id in UNNEST(@ids)
             """
-        genius_song_matches = db_read_query(g_ids_query, (g_ids_to_query.to_list(),))
+        genius_song_matches = db_read_query(g_ids_query, {'ids': g_ids_to_query.to_list()})
 
     return (
         df.lazy()
@@ -216,7 +216,7 @@ def get_album_art(cluster_similar_tracks_this_month: pl.DataFrame) -> dict[int, 
 
 # monthly graphs
 @st.cache_data
-def get_cluster_graph(date: pn.Date):
+def get_cluster_graph(date: pn.Date|None):
     if not date:
         return read_cluster_graph()
 
@@ -253,7 +253,7 @@ def get_cluster_graph(date: pn.Date):
 
 
 @st.fragment
-def plot_network(date: pn.Date):
+def plot_network(date: pn.Date|None):
     """Show graph of listening sessions with song lyric clusters"""
     cluster_graph = get_cluster_graph(date)
     image_dict = get_album_art(cluster_similar_tracks_this_month)
@@ -347,7 +347,7 @@ plot_cluster_piechart()
 
 
 @st.fragment
-def plot_cluster_times_polar(date: pn.Date):
+def plot_cluster_times_polar(date: pn.Date|None):
     scrobbles_clustered_timebins = (
         pl.LazyFrame({'hour': list(range(24))})
         .join(pl.LazyFrame({'cluster': list(range(n_clusters))}), how='cross')
