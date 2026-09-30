@@ -135,8 +135,8 @@ def get_cluster_examples(date: pn.Date) -> pl.DataFrame:
     # get intermediate df with ids of songs to query from db
     df = (
         df_embeddings_clustered.lazy()
-        .filter(pl.col('centroid_dist').rank('dense').over('cluster') <= 3)
         .join(filter_df_by_month(df_sessions, date), on='g_id')
+        .filter(pl.col('centroid_dist').rank('dense').over('cluster') <= 3)
         .collect()
     )
     # get song ids from db
