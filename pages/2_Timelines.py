@@ -9,6 +9,7 @@ from dashboard.common import (
     make_df_cluster_labels,
     timeout_popup,
 )
+from dashboard.database import db_read_table
 
 timeout_popup()
 st.set_page_config(page_title='Timelines', page_icon='📈')
@@ -16,12 +17,17 @@ st.header('Your Listening History')
 st.sidebar.header('The Lyrical Miracle')
 
 
-plays_clustered = pl.scan_parquet(DATA_DIR / 'plays_clustered.parquet')
 df_stats_all_months = pl.read_parquet(DATA_DIR / 'df_stats_all_months.parquet')
 df_sessions = pl.scan_parquet(DATA_DIR / 'df_sessions.parquet')
 df_cluster_per_month = pl.scan_parquet(DATA_DIR / 'df_cluster_per_month.parquet')
 
-n_clusters = plays_clustered.select(pl.col('cluster').n_unique()).collect().item()
+
+@st.cache_data
+def get_n_clusters() -> int:
+    return db_read_table('genius.lyrics_cluster_centroids', cols=['cluster']).height
+
+
+n_clusters = get_n_clusters()
 df_cluster_labels = make_df_cluster_labels(n_clusters)
 
 

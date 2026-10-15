@@ -11,8 +11,6 @@ def _(mo):
     Precompute and save data for the dashboard.
     Files saved:
     - `lyrics_embed`: song ids and lyric-embeddings
-    - `kmeans`: embedding cluster assignments centroids
-    - `df_embeddings_clustered`: song ids and their assigned cluster
     - `plays_expanded`: song plays table with extra computed cols
     - `plays_clustered`: plays_expanded with cluster assignments
     - `df_sessions`: session-level aggregates
@@ -32,22 +30,16 @@ def _():
 
     import marimo as mo
     import networkx as nx
-    import numpy as np
     import polars as pl
     import polars.selectors as cs
 
-    from dashboard.clustering import run_kmeans
     from dashboard.common import (
         BIG5_TRAITS,
         BIG5_TRAITS_NEG,
         BIG5_TRAITS_POS,
         BIG5_TRAITS_SHORT,
-        CLUSTER_VECTORS_PATH,
         DATA_DIR,
         EMBEDDING_DIM,
-        KMEANS_FILE,
-        N_CLUSTERS,
-        RANDOM_SEED,
         SEARCH_VECTORS_PATH,
         SES_MAX_GAP,
         TIME_BIN_BOUNDARIES,
@@ -62,12 +54,8 @@ def _():
         BIG5_TRAITS_NEG,
         BIG5_TRAITS_POS,
         BIG5_TRAITS_SHORT,
-        CLUSTER_VECTORS_PATH,
         DATA_DIR,
         EMBEDDING_DIM,
-        KMEANS_FILE,
-        N_CLUSTERS,
-        RANDOM_SEED,
         SEARCH_VECTORS_PATH,
         SES_MAX_GAP,
         TIME_BIN_BOUNDARIES,
@@ -78,11 +66,9 @@ def _():
         gzip,
         make_df_cluster_labels,
         mo,
-        np,
         nx,
         pickle,
         pl,
-        run_kmeans,
     )
 
 
@@ -121,9 +107,6 @@ def _(EMBEDDING_DIM, db_read_table, pl):
     df_scrobbles = db_read_table(
         'lastfm.scrobbles', cols=['dt', 'song', 'artist', 'album']
     )
-    df_lyrics_cluster_vecs = db_read_table(
-        'genius.lyrics_embed_clustering'
-    ).with_columns(pl.col('embedding').cast(pl.Array(pl.Float64, EMBEDDING_DIM)))
     df_lyrics_search_vecs = db_read_table('genius.lyrics_embed').with_columns(
         pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM))
     )
@@ -132,7 +115,6 @@ def _(EMBEDDING_DIM, db_read_table, pl):
     )
     return (
         df_lyrics_big5,
-        df_lyrics_cluster_vecs,
         df_lyrics_search_vecs,
         df_plays,
         df_scrobbles,
@@ -155,81 +137,21 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(
-    CLUSTER_VECTORS_PATH,
-    EMBEDDING_DIM,
-    N_CLUSTERS,
-    RANDOM_SEED,
-    SEARCH_VECTORS_PATH,
-    df_lyrics_cluster_vecs,
-    df_lyrics_search_vecs,
-    pl,
-    run_kmeans,
-):
+def _(SEARCH_VECTORS_PATH, df_lyrics_search_vecs):
     df_lyrics_search_vecs.write_parquet(SEARCH_VECTORS_PATH)
-    (
-        df_lyrics_cluster_vecs.lazy()
-        .select('id', 'embedding')
-        .with_columns(pl.col('embedding').cast(pl.Array(pl.Float32, EMBEDDING_DIM)))
-        .sink_parquet(CLUSTER_VECTORS_PATH)
-    )
-
-    print('running kmeans...')
-    km = run_kmeans(df_lyrics_cluster_vecs['embedding'], N_CLUSTERS, RANDOM_SEED)
-    return (km,)
-
-
-@app.cell(hide_code=True)
-def _(KMEANS_FILE, gzip, km, pickle):
-    with gzip.open(KMEANS_FILE, 'wb') as f:
-        pickle.dump(km, f)
     return
 
 
 @app.cell(hide_code=True)
-def _(N_CLUSTERS, km, make_df_cluster_labels, pl):
-    # df_centroids: cluster labels and centroid vectors
-    df_cluster_labels = make_df_cluster_labels(N_CLUSTERS)
-    df_centroids = (
-        pl.DataFrame(pl.Series('centroid', km.cluster_centers_))
-        .with_row_index('cluster')
-        .join(df_cluster_labels, 'cluster', 'left')
+def _(db_read_table, make_df_cluster_labels):
+    # df_centroids: cluster labels and centroid vectors, from bigquery
+    df_lyrics_clusters = db_read_table('genius.lyrics_clusters')
+    df_cluster_centroids = db_read_table('genius.lyrics_cluster_centroids').sort(
+        'cluster'
     )
-    return df_centroids, df_cluster_labels
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    `df_embeddings_clustered`: song ids, cluster labels, and centroid distances
-    (dropping embedding/centroid vectors to save space)
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(DATA_DIR, df_centroids, df_lyrics_cluster_vecs, km, np, pl):
-    df_embeddings_clustered: pl.LazyFrame = (
-        df_lyrics_cluster_vecs.lazy()
-        .rename({'id': 'g_id'})
-        .with_columns(pl.Series('cluster', km.labels_))
-        .join(df_centroids.lazy(), on='cluster')
-        # EXPERIMENTAL spectral-clustering centroids
-        # .with_columns(centroid_dist = pl.col('centroid').sub(pl.Series(spectra)))
-        # EXPERIMENTAL end
-        .with_columns(centroid_dist=pl.col('centroid') - pl.col('embedding'))
-        .with_columns(
-            pl.col('centroid_dist').map_batches(
-                lambda vec: np.linalg.norm(vec, axis=1),
-                returns_scalar=True,
-                return_dtype=pl.Float64,
-            )
-        )
-        .select('g_id', 'cluster', 'cluster_label', 'centroid_dist')
-    )
-
-    df_embeddings_clustered.sink_parquet(DATA_DIR / 'df_embeddings_clustered.parquet')
-    return
+    df_cluster_labels = make_df_cluster_labels(df_cluster_centroids.height)
+    df_centroids = df_cluster_centroids.join(df_cluster_labels, 'cluster', 'left')
+    return df_centroids, df_cluster_labels, df_lyrics_clusters
 
 
 @app.cell(hide_code=True)
@@ -311,7 +233,7 @@ def _(TIME_BIN_BOUNDARIES, TIME_BIN_LABELS, TIME_ZONE, pl, plays_matched):
             timebin=pl.col('dectime')
             .sub(3)
             .mod(24)
-            .cut(TIME_BIN_BOUNDARIES, labels=TIME_BIN_LABELS, left_closed=True)
+            .bin_intervals(TIME_BIN_BOUNDARIES, labels=TIME_BIN_LABELS)
             .cast(pl.Enum(TIME_BIN_LABELS))
         )
         .select(
@@ -342,10 +264,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(df_lyrics_cluster_vecs, km, pl, plays_expanded: 'pl.LazyFrame'):
+def _(df_lyrics_clusters, pl, plays_expanded: 'pl.LazyFrame'):
     plays_clustered: pl.LazyFrame = (
-        df_lyrics_cluster_vecs.lazy()
-        .select(id=pl.col('id'), cluster=pl.Series(km.labels_, dtype=pl.Int64))
+        df_lyrics_clusters.lazy()
+        .select('id', 'cluster')
         # merge with song plays
         .join(plays_expanded.lazy(), left_on='id', right_on='g_id', how='right')
         # group into sessions of at most 1 day between scrobbles
@@ -684,7 +606,7 @@ def _(
     ).with_row_index('n')
     big5 = (
         big5.with_columns(n=range(5))
-        .explode('n', 'outputs')
+        .explode('n', 'outputs', empty_as_null=True)
         .rename({'outputs': 'logit'})
         .group_by('date', 'n', maintain_order=True)
         .mean()

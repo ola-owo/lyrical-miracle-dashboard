@@ -20,15 +20,9 @@ PALETTE = plotly.colors.qualitative.D3
 # date/time management
 TIME_ZONE = 'US/Eastern'  # for converting scrobbles timestamps from UTC
 
-# clustering
-N_CLUSTERS = 7
-RANDOM_SEED = 1738
-KMEANS_FILE = DATA_DIR / 'kmeans.pkl.gz'
-
 # embeddings
 EMBEDDING_DIM = 768
 SEARCH_VECTORS_PATH = DATA_DIR / 'lyrics_search_vecs.parquet'
-CLUSTER_VECTORS_PATH = DATA_DIR / 'lyrics_cluster_vecs.parquet'
 
 # session binning
 SES_MAX_GAP = pl.duration(days=1)  # max gap between consecutive songs in a session

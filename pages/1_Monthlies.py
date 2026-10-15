@@ -17,7 +17,7 @@ from dashboard.common import (
     make_df_cluster_labels,
     timeout_popup,
 )
-from dashboard.database import db_read_query
+from dashboard.database import db_read_query, db_read_table
 from dashboard.graphs import plot_network_agraph
 
 timeout_popup()
@@ -31,8 +31,6 @@ st.sidebar.header('The Lyrical Miracle')
 ###
 
 df_sessions = pl.scan_parquet(DATA_DIR / 'df_sessions.parquet')
-df_embeddings_clustered = pl.scan_parquet(DATA_DIR / 'df_embeddings_clustered.parquet')
-df_cluster_stats = pl.scan_parquet(DATA_DIR / 'df_cluster_stats.parquet')
 plays_expanded = pl.scan_parquet(DATA_DIR / 'plays_expanded.parquet')
 plays_clustered = pl.scan_parquet(DATA_DIR / 'plays_clustered.parquet')
 big5 = pl.scan_parquet(DATA_DIR / 'big5.parquet')
@@ -45,12 +43,31 @@ def read_cluster_graph():
 
 
 @st.cache_data
-def read_kmeans():
-    with gzip.open(DATA_DIR / 'kmeans.pkl.gz') as f:
-        return pickle.load(f)
+def get_kmeans_centroids():
+    return db_read_table('genius.lyrics_cluster_centroids').sort('cluster')
 
 
-km = read_kmeans()
+@st.cache_data
+def get_song_clusters() -> pl.DataFrame:
+    """Cluster assignment and distance to the cluster centroid of each song"""
+    return db_read_query(
+        """
+        SELECT l.id g_id
+            , l.cluster
+            , SQRT((
+                SELECT SUM(POW(e - c, 2))
+                FROM UNNEST(emb.embedding) e WITH OFFSET i
+                JOIN UNNEST(cen.centroid) c WITH OFFSET j ON i = j
+            )) centroid_dist
+        FROM `genius.lyrics_clusters` l
+        JOIN `genius.lyrics_embed_clustering` emb ON emb.id = l.id
+        JOIN `genius.lyrics_cluster_centroids` cen ON cen.cluster = l.cluster
+        """
+    )
+
+
+km_centroids = get_kmeans_centroids()
+df_embeddings_clustered = get_song_clusters()
 
 
 ###
@@ -77,21 +94,17 @@ with st.sidebar:
 ###
 ### DATA WRANGLING
 ###
-n_clusters = df_cluster_stats.select(pl.len()).collect().item()
+n_clusters = km_centroids.height
 df_cluster_labels = make_df_cluster_labels(n_clusters)
 
 
-def filter_df_by_month(df, date: pn.Date|None):
+def filter_df_by_month(df, date: pn.Date | None):
     if not date:
         return df
     return df.filter((pl.col('year') == date.year) & (pl.col('month') == date.month))
 
 
-df_centroids = (
-    pl.DataFrame(pl.Series('centroid', km.cluster_centers_))
-    .with_row_index('cluster')
-    .join(df_cluster_labels, 'cluster', 'left')
-)
+df_centroids = km_centroids.join(df_cluster_labels, 'cluster', 'left')
 
 
 def get_cluster_stats(df: pl.DataFrame | pl.LazyFrame):
@@ -130,11 +143,14 @@ cluster_stats_this_period = get_cluster_stats(
 
 
 @st.cache_data
-def get_cluster_examples(date: pn.Date|None) -> pl.DataFrame:
+def get_cluster_examples(date: pn.Date | None) -> pl.DataFrame:
     # get intermediate df with ids of songs to query from db
     df = (
         df_embeddings_clustered.lazy()
-        .join(filter_df_by_month(df_sessions, date), on='g_id')
+        .join(
+            filter_df_by_month(df_sessions, date).drop('cluster', 'cluster_label'),
+            on='g_id',
+        )
         .filter(pl.col('centroid_dist').rank('dense').over('cluster') <= 3)
         .collect()
     )
@@ -158,7 +174,9 @@ def get_cluster_examples(date: pn.Date|None) -> pl.DataFrame:
             FROM `genius.songs`
             WHERE id in UNNEST(@ids)
             """
-        genius_song_matches = db_read_query(g_ids_query, {'ids': g_ids_to_query.to_list()})
+        genius_song_matches = db_read_query(
+            g_ids_query, {'ids': g_ids_to_query.to_list()}
+        )
 
     return (
         df.lazy()
@@ -166,7 +184,7 @@ def get_cluster_examples(date: pn.Date|None) -> pl.DataFrame:
         .unique(['cluster', 'g_id'])
         .drop(cs.ends_with('_right'))
         .join(
-            df_cluster_stats.lazy().select('cluster', 'cluster_label'),
+            df_cluster_labels.lazy(),
             on='cluster',
             how='left',
         )
@@ -216,7 +234,7 @@ def get_album_art(cluster_similar_tracks_this_month: pl.DataFrame) -> dict[int, 
 
 # monthly graphs
 @st.cache_data
-def get_cluster_graph(date: pn.Date|None):
+def get_cluster_graph(date: pn.Date | None):
     if not date:
         return read_cluster_graph()
 
@@ -253,7 +271,7 @@ def get_cluster_graph(date: pn.Date|None):
 
 
 @st.fragment
-def plot_network(date: pn.Date|None):
+def plot_network(date: pn.Date | None):
     """Show graph of listening sessions with song lyric clusters"""
     cluster_graph = get_cluster_graph(date)
     image_dict = get_album_art(cluster_similar_tracks_this_month)
@@ -347,7 +365,7 @@ plot_cluster_piechart()
 
 
 @st.fragment
-def plot_cluster_times_polar(date: pn.Date|None):
+def plot_cluster_times_polar(date: pn.Date | None):
     scrobbles_clustered_timebins = (
         pl.LazyFrame({'hour': list(range(24))})
         .join(pl.LazyFrame({'cluster': list(range(n_clusters))}), how='cross')
