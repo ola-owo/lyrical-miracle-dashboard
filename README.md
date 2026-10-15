@@ -20,7 +20,7 @@ Check out my live demo [here!](https://lyrical-miracle-49172755171.us-central1.r
 - **LLM**: [Google Gemini](https://ai.google.dev/)
 - **Vector Search**: [FAISS](https://github.com/facebookresearch/faiss)
 - **Data Processing**: [Polars](https://pola.rs/) | [NumPy](https://numpy.org/)
-- **Database**: [neondb](https://neon.com/) | [DuckDB](https://duckdb.org/)
+- **Database**: [DuckDB](https://duckdb.org/)
 
 ## Setup
 
@@ -36,13 +36,9 @@ docker buildx build -t streamlit .
 
 ### Secrets
 
-Create `.streamlit/secrets.toml` with your Last.fm, Gemini, and SQL database credentials.
+Create `.streamlit/secrets.toml` with your Last.fm and Gemini credentials, plus your GCP service account information for BigQuery under `[gcp_service_account]`.
 
 ```toml
-[connections.neon]
-url = [...]
-type = 'sql'
-
 [lastfm]
 user = [...]
 key = [...]
@@ -50,6 +46,9 @@ secret = [...]
 
 [gemini]
 api_key = [...]
+
+[gcp_service_account]
+# paste the fields from your service account JSON key
 ```
 
 ### Data

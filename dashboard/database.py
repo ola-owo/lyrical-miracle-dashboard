@@ -9,7 +9,6 @@ import streamlit as st
 from google.cloud import bigquery
 from google.cloud.bigquery import ArrayQueryParameter, ScalarQueryParameter
 from google.oauth2 import service_account
-from polars import selectors as cs
 from streamlit.connections import ExperimentalBaseConnection
 from streamlit.runtime.caching import cache_data
 
@@ -141,29 +140,6 @@ def db_read_query(query: str, params: dict[str, Any] | None = None) -> pl.DataFr
     client = get_bq_client()
     query_job = client.query(query, job_config=job_config)
     return pl.DataFrame(query_job.to_arrow())
-
-
-def neondb_read_table(tbl: str, cols=None):
-    tbl = tbl.replace('"', '')
-    tbl = '.'.join(f'"{part}"' for part in tbl.split('.'))
-    if cols:
-        cols_str = ', '.join(f'"{col}"' for col in cols)
-    else:
-        cols_str = '*'
-    return pl.read_database_uri(
-        f'SELECT {cols_str} FROM {tbl}', st.secrets['connections']['neon']['url']
-    ).drop(cs.starts_with('_dlt_'))
-
-
-def neondb_read_query(q: str, params: tuple | None = None):
-    execute_options = {'parameters': params} if params else None
-    engine = 'adbc' if params else 'connectorx'
-    return pl.read_database_uri(
-        q,
-        st.secrets['connections']['neon']['url'],
-        engine=engine,
-        execute_options=execute_options,
-    )
 
 
 def duckdb_read_table(tbl: str):
