@@ -1,2 +1,2 @@
-uv run notebooks/precompute.py && \
+uv run --dev notebooks/precompute.py && \
     gcloud storage cp 'data/*' gs://lyrics-analyzer/dashboard-data/
