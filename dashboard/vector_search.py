@@ -77,7 +77,7 @@ def _embed_query(
         config=types.EmbedContentConfig(output_dimensionality=dim),
     )
     emb = np.array([e.values for e in res.embeddings])
-    emb = emb / np.linalg.norm(emb, axis=0)
+    emb = emb / np.linalg.norm(emb, axis=1, keepdims=True)
     return emb
 
 

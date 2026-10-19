@@ -36,7 +36,7 @@ def get_lastfm_img(artist, song, mbid=None) -> str | None:
             {'method': 'track.getInfo', 'track': track, 'artist': artist, 'mbid': mbid}
         )
 
-    resp = get_track_info(artist, song, mbid).json()
+    resp = get_track_info(track=song, artist=artist, mbid=mbid).json()
     try:
         # imgs are ordered from smallest to largest
         img_url = resp['track']['album']['image'][-1]['#text']

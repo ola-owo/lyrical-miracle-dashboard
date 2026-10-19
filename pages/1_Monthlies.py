@@ -1,7 +1,6 @@
 import gzip
 import pickle
 
-import networkx as nx
 import pendulum as pn
 import plotly.express as px
 import plotly.graph_objects as go
@@ -18,7 +17,8 @@ from dashboard.common import (
     timeout_popup,
 )
 from dashboard.database import db_read_query, db_read_table
-from dashboard.graphs import plot_network_agraph
+from dashboard.graphs import build_cluster_graph, plot_network_agraph
+from dashboard.wrangling import filter_df_by_month, get_cluster_stats
 
 timeout_popup()
 st.set_page_config(page_title='Your Monthly Music Breakdown', page_icon='📅')
@@ -88,7 +88,6 @@ with st.sidebar:
         index=None,
         format_func=lambda dt: dt.format('MMMM YYYY'),
     )
-    print('selected date', st.session_state.selected_date)
 
 
 ###
@@ -97,48 +96,10 @@ with st.sidebar:
 n_clusters = km_centroids.height
 df_cluster_labels = make_df_cluster_labels(n_clusters)
 
-
-def filter_df_by_month(df, date: pn.Date | None):
-    if not date:
-        return df
-    return df.filter((pl.col('year') == date.year) & (pl.col('month') == date.month))
-
-
 df_centroids = km_centroids.join(df_cluster_labels, 'cluster', 'left')
 
-
-def get_cluster_stats(df: pl.DataFrame | pl.LazyFrame):
-    """Get aggregate stats per cluster"""
-    return (
-        df.lazy()
-        .group_by('cluster')
-        .agg(
-            n_plays=pl.len(),
-            n_unique_plays=pl.col('g_id').unique().len(),
-            n_sessions=pl.col('session').unique().len(),
-            top_song_id=pl.col('g_id').mode().first(),
-        )
-        .sort('cluster')
-        .with_columns((pl.col('n_plays') / pl.col('n_plays').sum()).alias('freq'))
-        .join(df_centroids.lazy(), on='cluster', how='full', coalesce=True)
-        .with_columns(
-            pl.col('freq', 'n_plays', 'n_unique_plays', 'n_sessions').replace(None, 0)
-        )
-        .select(
-            'cluster',
-            'cluster_label',
-            'freq',
-            'n_plays',
-            'n_unique_plays',
-            'n_sessions',
-            'top_song_id',
-            'centroid',
-        )
-    )
-
-
 cluster_stats_this_period = get_cluster_stats(
-    filter_df_by_month(df_sessions, st.session_state.selected_date)
+    filter_df_by_month(df_sessions, st.session_state.selected_date), df_centroids
 ).collect()
 
 
@@ -238,31 +199,7 @@ def get_cluster_graph(date: pn.Date | None):
     if not date:
         return read_cluster_graph()
 
-    df = filter_df_by_month(df_sessions, date)
-    g = nx.DiGraph()
-    g.add_nodes_from(
-        [
-            (c, {'name': n, 'weight': w})
-            for c, n, w in (
-                df.drop_nulls('cluster')
-                .group_by(['cluster', 'cluster_label'])
-                .len()
-                .sort('cluster')
-                .collect()
-                .iter_rows()
-            )
-        ]
-    )
-    g.add_weighted_edges_from(
-        df.filter(pl.col('ses_len') > 1)
-        .select('prev_cluster', 'cluster')
-        .drop_nulls()
-        .group_by(cs.all())
-        .len()
-        .collect()
-        .rows()
-    )
-    return g
+    return build_cluster_graph(filter_df_by_month(df_sessions, date))
 
 
 ###

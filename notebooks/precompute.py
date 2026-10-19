@@ -1,8 +1,9 @@
 # ruff: noqa: PLR1711, F821, UP037
+
 import marimo
 
-__generated_with = '0.23.11'
-app = marimo.App(width='medium')
+__generated_with = "0.25.1"
+app = marimo.App(width="medium")
 
 
 @app.cell(hide_code=True)
@@ -61,12 +62,10 @@ def _():
         TIME_BIN_BOUNDARIES,
         TIME_BIN_LABELS,
         TIME_ZONE,
-        cs,
         db_read_table,
         gzip,
         make_df_cluster_labels,
         mo,
-        nx,
         pickle,
         pl,
     )
@@ -113,12 +112,7 @@ def _(EMBEDDING_DIM, db_read_table, pl):
     df_lyrics_big5 = db_read_table('genius.lyrics_big5').select(
         pl.col('id'), pl.concat_arr('opn', 'con', 'ext', 'agr', 'neu').alias('outputs')
     )
-    return (
-        df_lyrics_big5,
-        df_lyrics_search_vecs,
-        df_plays,
-        df_scrobbles,
-    )
+    return df_lyrics_big5, df_lyrics_search_vecs, df_plays, df_scrobbles
 
 
 @app.cell(hide_code=True)
@@ -264,7 +258,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(df_lyrics_clusters, pl, plays_expanded: 'pl.LazyFrame'):
+def _(df_lyrics_clusters, pl, plays_expanded: "pl.LazyFrame"):
     plays_clustered: pl.LazyFrame = (
         df_lyrics_clusters.lazy()
         .select('id', 'cluster')
@@ -284,8 +278,8 @@ def _(df_lyrics_clusters, pl, plays_expanded: 'pl.LazyFrame'):
 @app.cell(hide_code=True)
 def _(
     DATA_DIR,
-    plays_clustered: 'pl.LazyFrame',
-    plays_expanded: 'pl.LazyFrame',
+    plays_clustered: "pl.LazyFrame",
+    plays_expanded: "pl.LazyFrame",
 ):
     plays_expanded.sink_parquet(DATA_DIR / 'plays_expanded.parquet')
     plays_clustered.sink_parquet(DATA_DIR / 'plays_clustered.parquet')
@@ -312,7 +306,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(SES_MAX_GAP, df_cluster_labels, pl, plays_clustered: 'pl.LazyFrame'):
+def _(SES_MAX_GAP, df_cluster_labels, pl, plays_clustered: "pl.LazyFrame"):
     df_sessions = (
         plays_clustered.with_columns(
             session=pl.col('timediff')
@@ -351,7 +345,6 @@ def _(SES_MAX_GAP, df_cluster_labels, pl, plays_clustered: 'pl.LazyFrame'):
             'album',
         )
     )
-
     return (df_sessions,)
 
 
@@ -465,7 +458,7 @@ def _(
     df_cluster_labels,
     df_stats_all_months,
     pl,
-    plays_clustered: 'pl.LazyFrame',
+    plays_clustered: "pl.LazyFrame",
 ):
     df_cluster_per_month = (
         plays_clustered.group_by(['year', 'month', 'cluster'])
@@ -525,30 +518,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(cs, df_sessions, nx, pl):
-    ses_graph_full = nx.DiGraph()
-    ses_graph_full.add_nodes_from(
-        [
-            (c, {'name': n, 'weight': w})
-            for c, n, w in (
-                df_sessions.drop_nulls('cluster')
-                .group_by(['cluster', 'cluster_label'])
-                .len()
-                .sort('cluster')
-                .collect()
-                .iter_rows()
-            )
-        ]
-    )
-    ses_graph_full.add_weighted_edges_from(
-        df_sessions.filter(pl.col('ses_len') > 1)
-        .select('prev_cluster', 'cluster')
-        .drop_nulls()
-        .group_by(cs.all())
-        .len()
-        .collect()
-        .rows()
-    )
+def _(df_sessions):
+    from dashboard.graphs import build_cluster_graph
+
+    ses_graph_full = build_cluster_graph(df_sessions)
     return (ses_graph_full,)
 
 
@@ -639,5 +612,5 @@ def _(DATA_DIR, big5):
     return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run()

@@ -1,6 +1,6 @@
 [project]
 name = "dashboard"
-version = "0.3.0"
+version = "0.4.0"
 requires-python = ">=3.14"
 dependencies = [
     "duckdb>=1.5.3",
@@ -29,7 +29,20 @@ module-root = ""
 [tool.ruff.format]
 quote-style = "single"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "real_data: run against the real precomputed files in data/ (skipped when absent)",
+]
+
 [dependency-groups]
+dev = [
+    { include-group = "test" },
+    { include-group = "precompute" },
+]
 precompute = [
     "marimo>=0.23.11",
+]
+test = [
+    "pytest>=8.4",
 ]
