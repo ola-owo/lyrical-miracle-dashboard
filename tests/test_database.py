@@ -8,6 +8,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 from google.cloud.bigquery import ArrayQueryParameter, ScalarQueryParameter
+from streamlit.errors import StreamlitSecretNotFoundError
 from streamlit.runtime.secrets import AttrDict
 
 from dashboard import database
@@ -184,6 +185,39 @@ def test_get_bq_client_uses_service_account(fake_secrets, monkeypatch):
         fake_secrets['gcp_service_account']
     )
     client_factory.assert_called_once_with(credentials=creds)
+
+
+def test_get_bq_client_falls_back_to_adc_without_secret(monkeypatch):
+    creds_factory = Mock()
+    client_factory = Mock()
+    monkeypatch.setattr(database.st, 'secrets', {})
+    monkeypatch.setattr(database.service_account, 'Credentials', creds_factory)
+    monkeypatch.setattr(database.bigquery, 'Client', client_factory)
+
+    client = database.get_bq_client()
+
+    assert client is client_factory.return_value
+    creds_factory.from_service_account_info.assert_not_called()
+    client_factory.assert_called_once_with()
+
+
+class _MissingSecrets:
+    def __getitem__(self, key):
+        raise StreamlitSecretNotFoundError('no secrets found')
+
+
+def test_get_bq_client_falls_back_to_adc_when_secrets_missing(monkeypatch):
+    creds_factory = Mock()
+    client_factory = Mock()
+    monkeypatch.setattr(database.st, 'secrets', _MissingSecrets())
+    monkeypatch.setattr(database.service_account, 'Credentials', creds_factory)
+    monkeypatch.setattr(database.bigquery, 'Client', client_factory)
+
+    client = database.get_bq_client()
+
+    assert client is client_factory.return_value
+    creds_factory.from_service_account_info.assert_not_called()
+    client_factory.assert_called_once_with()
 
 
 ###

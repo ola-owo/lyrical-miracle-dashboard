@@ -36,7 +36,9 @@ docker buildx build -t streamlit .
 
 ### Secrets
 
-Create `.streamlit/secrets.toml` with your Last.fm and Gemini credentials, plus your GCP service account information for BigQuery under `[gcp_service_account]`.
+Create `.streamlit/secrets.toml` with your Last.fm and Gemini credentials.
+You can optionally add a GCP service account key for BigQuery under `[gcp_service_account]`.
+If `[gcp_service_account]` is omitted, BigQuery will fallback to ADC.
 
 ```toml
 [lastfm]
@@ -59,7 +61,7 @@ Run `precompute.py` to compute and save all the data needed to run the dashboard
 
 Start the Streamlit server:
 
-```
+```text
 uv run streamlit run lyrical-miracle-dashboard/Home.py --server.headless=true --server.port=8501
 ```
 

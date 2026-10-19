@@ -10,7 +10,10 @@ from google.cloud import bigquery
 from google.cloud.bigquery import ArrayQueryParameter, ScalarQueryParameter
 from google.oauth2 import service_account
 from streamlit.connections import ExperimentalBaseConnection
+from streamlit.errors import StreamlitSecretNotFoundError
 from streamlit.runtime.caching import cache_data
+
+BQ_CREDENTIALS_KEY = 'gcp_service_account'
 
 BQ_TYPE_MAP = {
     bool: 'BOOL',
@@ -63,13 +66,31 @@ def _bq_array_param(name, values) -> ArrayQueryParameter:
     return ArrayQueryParameter(name, bq_type, list(values))
 
 
+def _bq_credentials() -> service_account.Credentials | None:
+    """
+    Get BigQuery credentials from st.secrets, if configured.
+
+    Returns: service account credentials, or None if no key is configured
+    """
+    try:
+        info = st.secrets[BQ_CREDENTIALS_KEY]
+    except KeyError, StreamlitSecretNotFoundError:
+        return None
+    return service_account.Credentials.from_service_account_info(info)
+
+
 @st.cache_resource
-def get_bq_client():
-    return bigquery.Client(
-        credentials=service_account.Credentials.from_service_account_info(
-            st.secrets['gcp_service_account']
-        )
-    )
+def get_bq_client() -> bigquery.Client:
+    """
+    Create a BigQuery client.
+
+    Uses the service account key in st.secrets when available,
+    otherwise falls back to Application Default Credentials.
+    """
+    credentials = _bq_credentials()
+    if credentials is not None:
+        return bigquery.Client(credentials=credentials)
+    return bigquery.Client()
 
 
 def db_read_table(

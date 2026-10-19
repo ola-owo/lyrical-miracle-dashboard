@@ -30,9 +30,7 @@ def _():
     import pickle
 
     import marimo as mo
-    import networkx as nx
     import polars as pl
-    import polars.selectors as cs
 
     from dashboard.common import (
         BIG5_TRAITS,
