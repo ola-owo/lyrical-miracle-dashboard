@@ -12,6 +12,11 @@ Streamlit dashboard for personal listening history with lyric-clustering analysi
   - `vector_search.py`: vector-searching the lyrics database
   - `graphs.py`: networkx graphs
   - `albumart.py`: album art retrieval functions
+  - `wrangling.py`: shared dataframe transformations
+- `tests/`: pytest suite.
+  `tests/app/`: page tests using `streamlit.testing.v1.AppTest`.
+  Tests must never read `.streamlit/secrets.toml`:
+  BigQuery/LastFM/Gemini calls are always patched.
 - `notebooks/precompute.py`: marimo notebook
   that builds the derived data files in `data/`.
 - `data/`: generated data files, not part of source code.
@@ -33,6 +38,10 @@ Streamlit dashboard for personal listening history with lyric-clustering analysi
   The timeout popup will block the main thread,
   preventing health checks and allowing Cloud Run to scale to zero after prolonged inactivity.
 - Test page changes with `streamlit.testing.v1.AppTest`.
+- Run the tests with `uv run pytest`.
+  Tests marked `real_data` run the pages against the files in `data/`,
+  and are skipped when those files are missing.
+  The `dev` dependency group pulls in both the `test` and `precompute` groups.
 
 ## Conventions
 
