@@ -136,9 +136,6 @@ def test_db_read_table_dset_with_qualified_name_raises():
         database.db_read_table('genius.songs', dset='other')
 
 
-@pytest.mark.xfail(
-    reason='pre-existing bug: 3-part table names drop the table segment',
-)
 def test_db_read_table_three_part_name(fake_bq_client):
     database.db_read_table('my-project.genius.songs')
     assert fake_bq_client.calls[0][0] == 'SELECT * FROM `my-project.genius.songs`'

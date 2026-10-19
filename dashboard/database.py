@@ -100,7 +100,9 @@ def db_read_table(
     Read a bigquery table
 
     Args:
-        tbl: table name (with optional dataset or project name)
+        tbl: table name (optionally qualified as `dataset.table` or
+            `project.dataset.table`)
+        dset: dataset name, for use when `tbl` is unqualified
         cols: columns to select (all columns if not specified)
 
     Returns: query results
@@ -109,6 +111,7 @@ def db_read_table(
 
     ```
     db_read_table('my_dset.my_tbl')
+    db_read_table('my-project.my_dset.my_tbl')
     db_read_table('my_tbl', dset='my_dset')
     db_read_table('my_tbl', dset='my_dset', cols=['id'])
     ```
@@ -121,7 +124,7 @@ def db_read_table(
         tbl_split = tbl.split('.')
         if len(tbl_split) not in (2, 3):
             raise ValueError("can't determine dataset name!")
-        tbl_full = f'{tbl_split[0]}.{tbl_split[1]}'
+        tbl_full = tbl
 
     cols_str = ', '.join(f'`{col}`' for col in cols) if cols else '*'
     query = f'SELECT {cols_str} FROM `{tbl_full}`'
