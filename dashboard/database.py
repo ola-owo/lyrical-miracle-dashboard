@@ -204,8 +204,7 @@ class DuckDBConnection(ExperimentalBaseConnection[duckdb.DuckDBPyConnection]):
         @cache_data(ttl=ttl)
         def _query(query: str, **kwargs) -> pl.DataFrame:
             with self.cursor() as cur:
-                cur.execute(query, **kwargs)
-                return cur.pl()
+                return cur.sql(query, **kwargs).pl()
 
         return _query(query, **kwargs)
 
