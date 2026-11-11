@@ -1,0 +1,17 @@
+FROM python:3.15-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_LOCKED=1
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-install-project --no-dev --group=precompute
+COPY . ./
+RUN uv sync --no-dev --group=precompute
+
+# Cloud Run's writable filesystem is in-memory and counts against the memory limit
+ENV DATA_DIR=/tmp/data
+ENTRYPOINT ["uv", "run", "--no-sync", "python", "-m", "dashboard.precompute"]

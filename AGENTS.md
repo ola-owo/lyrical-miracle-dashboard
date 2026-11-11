@@ -13,6 +13,9 @@ Streamlit dashboard for personal listening history with lyric-clustering analysi
   - `graphs.py`: networkx graphs
   - `albumart.py`: album art retrieval functions
   - `wrangling.py`: shared dataframe transformations
+  - `precompute.py`: builds the derived data files; also the CLI entrypoint
+    (`python -m dashboard.precompute`) used by the Cloud Run job
+  - `storage.py`: GCS upload helpers
 - `tests/`: pytest suite.
   `tests/app/`: page tests using `streamlit.testing.v1.AppTest`.
   Tests must never read `.streamlit/secrets.toml`:
@@ -22,6 +25,8 @@ Streamlit dashboard for personal listening history with lyric-clustering analysi
 - `data/`: generated data files, not part of source code.
 - `precompute.sh`: runs the notebook, then uploads `data/*` to GCS.
   Don't run it unless asked.
+- `Dockerfile.precompute`: Cloud Run job image
+  running `python -m dashboard.precompute`.
 - `.streamlit/secrets.toml`: credentials.
   Do NOT read this file or run any commands that print it.
   Instead, let the user edit it directly if needed.
@@ -41,7 +46,8 @@ Streamlit dashboard for personal listening history with lyric-clustering analysi
 - Run the tests with `uv run pytest`.
   Tests marked `real_data` run the pages against the files in `data/`,
   and are skipped when those files are missing.
-  The `dev` dependency group pulls in both the `test` and `precompute` groups.
+  The `dev` dependency group pulls in both the `test` and `precompute` groups,
+  plus `marimo` for the precompute notebook.
 
 ## Conventions
 
