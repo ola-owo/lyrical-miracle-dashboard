@@ -393,6 +393,7 @@ precompute = [
     { name = "google-cloud-storage" },
 ]
 test = [
+    { name = "google-cloud-storage" },
     { name = "pytest" },
 ]
 
@@ -420,7 +421,10 @@ dev = [
     { name = "pytest", specifier = ">=8.4" },
 ]
 precompute = [{ name = "google-cloud-storage", specifier = ">=3.17.1" }]
-test = [{ name = "pytest", specifier = ">=8.4" }]
+test = [
+    { name = "google-cloud-storage", specifier = ">=3.17.1" },
+    { name = "pytest", specifier = ">=8.4" },
+]
 
 [[package]]
 name = "distro"
